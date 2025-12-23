@@ -1,6 +1,26 @@
 // PATH: src/lib/chartGenerator.ts
 import type { UserChartPayload } from "@/lib/userChartCache";
 
+// (leave your existing imports and other functions as-is)
+
+const PLANET_ORDER = [
+    "Sun",
+    "Earth",
+    "North Node",
+    "South Node",
+    "Moon",
+    "Mercury",
+    "Venus",
+    "Mars",
+    "Jupiter",
+    "Saturn",
+    "Uranus",
+    "Neptune",
+    "Pluto",
+] as const;
+
+type PlanetName = (typeof PLANET_ORDER)[number];
+
 function pickUnique(nums: number[], n: number) {
     const copy = [...nums];
     for (let i = copy.length - 1; i > 0; i--) {
@@ -11,12 +31,18 @@ function pickUnique(nums: number[], n: number) {
 }
 
 export function generateTestChart(label = "test-chart"): UserChartPayload {
-    // Human Design gates are 1..64
     const gates = Array.from({ length: 64 }, (_, i) => i + 1);
 
-    // Pick some “activations” just to have something deterministic-ish
-    const personality = pickUnique(gates, 13);
-    const design = pickUnique(gates.filter((g) => !personality.includes(g)), 13);
+    const personality = pickUnique(gates, PLANET_ORDER.length);
+    const design = pickUnique(gates.filter((g) => !personality.includes(g)), PLANET_ORDER.length);
+
+    const personalityByPlanet: Record<PlanetName, number> = {} as any;
+    const designByPlanet: Record<PlanetName, number> = {} as any;
+
+    PLANET_ORDER.forEach((p, i) => {
+        personalityByPlanet[p] = personality[i];
+        designByPlanet[p] = design[i];
+    });
 
     return {
         version: 1,
@@ -25,11 +51,13 @@ export function generateTestChart(label = "test-chart"): UserChartPayload {
         data: {
             kind: "test",
             createdAt: new Date().toISOString(),
-            personalityGates: personality.sort((a, b) => a - b),
-            designGates: design.sort((a, b) => a - b),
+            planetOrder: PLANET_ORDER,
+            personalityByPlanet,
+            designByPlanet,
         },
     };
 }
+
 
 export function generateBirthDataSkeleton(input: {
     label?: string;

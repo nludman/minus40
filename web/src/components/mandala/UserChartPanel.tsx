@@ -112,15 +112,37 @@ export default function UserChartPanel({
                                 </button>
 
                                 <button
-                                    onClick={() => {
-                                        const payload = generateBirthDataSkeleton({
-                                            label: genLabel || "birthdata",
-                                            date: birthDate,
-                                            time: birthTime,
-                                            location: birthLocation,
-                                        });
-                                        onUserChartUploaded(payload);
+                                    onClick={async () => {
+                                        try {
+                                            // Interpret the date+time as LOCAL time (browser), then convert to UTC ISO
+                                            const local = new Date(`${birthDate}T${birthTime}:00`);
+                                            const birth_utc = local.toISOString(); // UTC
+
+                                            const res = await fetch("/api/user-chart", {
+                                                method: "POST",
+                                                headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({ birth_utc }),
+                                            });
+
+                                            if (!res.ok) {
+                                                const msg = await res.text();
+                                                throw new Error(msg);
+                                            }
+
+                                            const computed = await res.json();
+
+                                            onUserChartUploaded({
+                                                version: 1,
+                                                label: genLabel || "my-chart",
+                                                source: "generator",
+                                                data: computed,
+                                            });
+                                        } catch (e) {
+                                            setError("Compute failed. Check server console + python script path.");
+                                            console.warn(e);
+                                        }
                                     }}
+
                                     className="h-9 rounded-xl text-sm bg-white/10 text-white hover:bg-white/20"
                                     title="Stores birth data skeleton for future real computation"
                                 >

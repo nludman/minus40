@@ -5,6 +5,7 @@ import { MandalaClient, ControlPanel, MandalaSvg, RightSidebar } from "@/compone
 import { useEffect } from "react";
 import UserChartPanel from "@/components/mandala/UserChartPanel";
 import { clearUserChart, loadUserChart, saveUserChart, type UserChartPayload } from "@/lib/userChartCache";
+import UserChartVisual from "@/components/mandala/UserChartVisual";
 
 
 export default function Home() {
@@ -130,6 +131,11 @@ export default function Home() {
         arcCap={arcCap}
         showCalendar={showCalendar}
       />
+
+      <div className="mt-6">
+        <UserChartVisual userChart={userChart} />
+      </div>
+
 
       <ControlPanel
         year={year}
