@@ -19,6 +19,10 @@ import { animateRingIn, animateRingMove } from "@/lib/mandala/animations";
 
 type MandalaClientProps = {
   year: number;
+  yearReloadKey?: number;
+  yearReloadMode?: "normal" | "reset";
+  onYearReloadConsumed?: () => void;
+  userReloadKey?: number; // not used yet, but reserved
   visiblePlanets: Record<string, boolean>;
   onHover?: (info: HoverInfo) => void;
   onSelect?: (info: HoverInfo) => void;
@@ -145,7 +149,25 @@ function updateCalendarOverlay(svg: SVGSVGElement, year: number, activeIds: stri
 
 
 
-export default function MandalaClient({ year, visiblePlanets, onHover, onSelect, selected, arcCap = "butt", ringLayout, showCalendar = true }: MandalaClientProps) {
+export default function MandalaClient({
+  year,
+  visiblePlanets,
+  onHover,
+  onSelect,
+  selected,
+  arcCap = "butt",
+  ringLayout,
+  showCalendar = true,
+
+  // cache controls
+  yearReloadKey,
+  yearReloadMode,
+  onYearReloadConsumed,
+
+  // reserved for future user chart cache refresh
+  userReloadKey,
+}: MandalaClientProps) {
+
   const prevRadiusRef = useRef<Map<string, number>>(new Map());
   const visiblePlanetsRef = useRef<Record<string, boolean>>(visiblePlanets);
   const arcCapRef = useRef<"round" | "butt">(arcCap);
@@ -265,11 +287,13 @@ export default function MandalaClient({ year, visiblePlanets, onHover, onSelect,
   }
 
 
-  async function fetchYearSegments(y: number): Promise<SegmentsPayload> {
-    const res = await fetch(`/api/segments?year=${y}`);
-    if (!res.ok) throw new Error(`segments fetch failed ${res.status}`);
+  async function fetchYearSegments(y: number, reset = false): Promise<SegmentsPayload> {
+    const qs = reset ? `?year=${y}&reset=1` : `?year=${y}`;
+    const res = await fetch(`/api/segments-year${qs}`);
+    if (!res.ok) throw new Error("Failed to fetch segments");
     return res.json();
   }
+
 
   function getAllIds(svg: SVGSVGElement, transits: SegmentsPayload["transits"]) {
     // Only include bodies that actually exist in the payload
@@ -337,11 +361,11 @@ export default function MandalaClient({ year, visiblePlanets, onHover, onSelect,
     }
   }
 
-  async function initYear(y: number) {
+  async function initYear(y: number, reset = false) {
     const svg = svgRef.current;
     if (!svg) return;
 
-    const payload = await fetchYearSegments(y);
+    const payload = await fetchYearSegments(y, reset);
 
     const yearText = svg.querySelector("#YearLabel tspan");
     if (yearText) yearText.textContent = String(payload.year);
@@ -419,11 +443,18 @@ export default function MandalaClient({ year, visiblePlanets, onHover, onSelect,
   }, [ringLayout]);
 
 
-  // Year change = fetch + rebuild
   useEffect(() => {
-    initYear(year).catch(console.warn);
+    const wantsReset = yearReloadMode === "reset";
+
+    initYear(year, wantsReset)
+      .catch(console.warn)
+      .finally(() => {
+        if (wantsReset) onYearReloadConsumed?.();
+      });
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [year]);
+  }, [year, yearReloadKey]);
+
 
   useEffect(() => {
     arcCapRef.current = arcCap;

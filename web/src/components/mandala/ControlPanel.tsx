@@ -3,6 +3,7 @@
 import { BODY_ORDER, type HoverInfo } from "@/lib/mandala/constants";
 
 
+
 type Props = {
   year: number;
   setYear: (y: number) => void;
@@ -16,6 +17,9 @@ type Props = {
   setRingLayout: (k: import("@/lib/mandala/ringLayout").RingLayoutKnobs) => void;
   showCalendar: boolean;
   setShowCalendar: (v: boolean) => void;
+  resetYearCache?: () => void;
+  resetUserCache?: () => void;
+
 
 };
 
@@ -23,6 +27,8 @@ type Props = {
 export default function ControlPanel({
   year,
   setYear,
+  resetYearCache,
+  resetUserCache,
   visiblePlanets,
   togglePlanet,
   toggleGroup,
@@ -35,6 +41,7 @@ export default function ControlPanel({
   setShowCalendar,
 
 }: Props) {
+
   return (
     <div className="fixed left-4 top-4 z-50 w-[260px] rounded-2xl bg-black/60 p-4 text-white backdrop-blur border border-white/10">
       <div className="flex items-center justify-between">
@@ -69,6 +76,24 @@ export default function ControlPanel({
         <div className="mt-1 text-[11px] opacity-60">
           Tip: type a year, or use +/-.
         </div>
+        <div className="mt-3 grid grid-cols-1 gap-2">
+          <button
+            onClick={() => resetYearCache?.()}
+            className="h-9 w-full rounded-xl text-sm bg-white/10 text-white hover:bg-white/20"
+            title="Forces the server to recompute the year segments and overwrite disk cache"
+          >
+            Reset year cache
+          </button>
+
+          <button
+            onClick={() => resetUserCache?.()}
+            className="h-9 w-full rounded-xl text-sm bg-white/10 text-white hover:bg-white/20"
+            title="Clears local user chart cache (placeholder for upcoming user-data system)"
+          >
+            Reset user data cache
+          </button>
+        </div>
+
       </div>
 
       <div className="mt-4">

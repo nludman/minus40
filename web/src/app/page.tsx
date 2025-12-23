@@ -3,6 +3,9 @@
 import { useMemo, useState } from "react";
 import { MandalaClient, ControlPanel, MandalaSvg, RightSidebar } from "@/components/mandala";
 import { useEffect } from "react";
+import UserChartPanel from "@/components/mandala/UserChartPanel";
+import { clearUserChart, loadUserChart, saveUserChart, type UserChartPayload } from "@/lib/userChartCache";
+
 
 export default function Home() {
 
@@ -24,6 +27,24 @@ export default function Home() {
     NorthNode: true,
     SouthNode: true,
   });
+
+  const [yearReloadKey, setYearReloadKey] = useState(0);
+  const [yearReloadMode, setYearReloadMode] = useState<"normal" | "reset">("normal");
+
+  const [userReloadKey, setUserReloadKey] = useState(0);
+  const [userChart, setUserChart] = useState<UserChartPayload | null>(null);
+  const [isUserPanelOpen, setIsUserPanelOpen] = useState(true);
+
+  useEffect(() => {
+    setUserChart(loadUserChart());
+  }, [userReloadKey]);
+
+
+  useEffect(() => {
+    // client-only (localStorage)
+    setUserChart(loadUserChart());
+  }, [userReloadKey]);
+
 
   const [ringLayout, setRingLayout] = useState<import("@/lib/mandala/ringLayout").RingLayoutKnobs>({
     centerR: 391.25,
@@ -62,6 +83,26 @@ export default function Home() {
 
   const visiblePlanetsStable = useMemo(() => visiblePlanets, [visiblePlanets]);
 
+  const resetYearCache = () => {
+    setYearReloadMode("reset");
+    setYearReloadKey((k) => k + 1);
+  };
+
+  const onUserChartUploaded = (payload: UserChartPayload) => {
+    saveUserChart(payload);
+    setUserChart(payload);
+    setUserReloadKey((k) => k + 1);
+  };
+
+  const resetUserCache = () => {
+    try {
+      clearUserChart();
+    } catch { }
+    setUserReloadKey((k) => k + 1);
+    setUserChart(null);
+  };
+
+
   useEffect(() => {
     const svg = document.querySelector("#MandalaSvg");
     if (!(svg instanceof SVGSVGElement)) return;
@@ -77,6 +118,10 @@ export default function Home() {
       <MandalaSvg />
       <MandalaClient
         year={year}
+        yearReloadKey={yearReloadKey}
+        yearReloadMode={yearReloadMode}
+        onYearReloadConsumed={() => setYearReloadMode("normal")}
+        userReloadKey={userReloadKey}
         visiblePlanets={visiblePlanetsStable}
         ringLayout={ringLayout}
         onHover={setHoverInfo}
@@ -89,6 +134,8 @@ export default function Home() {
       <ControlPanel
         year={year}
         setYear={setYear}
+        resetYearCache={resetYearCache}
+        resetUserCache={resetUserCache}
         visiblePlanets={visiblePlanetsStable}
         togglePlanet={togglePlanet}
         toggleGroup={toggleGroup}
@@ -99,6 +146,7 @@ export default function Home() {
         setRingLayout={setRingLayout}
         showCalendar={showCalendar}
         setShowCalendar={setShowCalendar}
+
       />
 
       <RightSidebar
@@ -106,6 +154,15 @@ export default function Home() {
         selected={selectedInfo}
         clearSelected={() => setSelectedInfo(null)}
       />
+
+      <UserChartPanel
+        userChart={userChart}
+        onUserChartUploaded={onUserChartUploaded}
+        onResetUserCache={resetUserCache}
+        isOpen={isUserPanelOpen}
+        onToggleOpen={() => setIsUserPanelOpen((v) => !v)}
+      />
+
     </main>
   );
 }
