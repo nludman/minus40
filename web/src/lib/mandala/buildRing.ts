@@ -52,6 +52,73 @@ function makeArcPath(
   return p;
 }
 
+type MoonPhaseSeg = {
+  start: string;
+  end: string;
+  phase: "waxing" | "waning";
+  gate: number; // we'll use 0=waxing, 1=waning for hover + coloring
+};
+
+function isoZ(ms: number) {
+  return new Date(ms).toISOString();
+}
+
+// Approximate lunation model (strong enough for UI rhythm; upgradeable later to Swiss Ephemeris exact events)
+function buildMoonPhaseSegments(yearStart: Date, yearEnd: Date): MoonPhaseSeg[] {
+  const SYNODIC_DAYS = 29.530588853; // mean synodic month
+  const SYNODIC_MS = SYNODIC_DAYS * 24 * 60 * 60 * 1000;
+
+  // Common reference new moon epoch: 2000-01-06 18:14 UTC (approx, widely used)
+  const EPOCH_NEW_MOON_MS = Date.UTC(2000, 0, 6, 18, 14, 0);
+
+  const startMs = yearStart.getTime();
+  const endMs = yearEnd.getTime();
+
+  // Find the lunation index k near the year start
+  const k0 = Math.floor((startMs - EPOCH_NEW_MOON_MS) / SYNODIC_MS) - 2;
+
+  const segs: MoonPhaseSeg[] = [];
+
+  let prevNew = EPOCH_NEW_MOON_MS + k0 * SYNODIC_MS;
+
+  // Step forward through new moons until we cover the year
+  for (let k = k0; k < k0 + 40; k++) {
+    const newMoon = EPOCH_NEW_MOON_MS + k * SYNODIC_MS;
+    const nextNewMoon = EPOCH_NEW_MOON_MS + (k + 1) * SYNODIC_MS;
+    const fullMoon = newMoon + SYNODIC_MS / 2;
+
+    // Clip to year window; we still want segments that overlap the year
+    const waxA = Math.max(newMoon, startMs);
+    const waxB = Math.min(fullMoon, endMs);
+    if (waxB > waxA) {
+      segs.push({
+        start: isoZ(waxA),
+        end: isoZ(waxB),
+        phase: "waxing",
+        gate: 0,
+      });
+    }
+
+    const wanA = Math.max(fullMoon, startMs);
+    const wanB = Math.min(nextNewMoon, endMs);
+    if (wanB > wanA) {
+      segs.push({
+        start: isoZ(wanA),
+        end: isoZ(wanB),
+        phase: "waning",
+        gate: 1,
+      });
+    }
+
+    // Stop once we've fully passed the year
+    if (newMoon > endMs && prevNew > endMs) break;
+    prevNew = newMoon;
+  }
+
+  return segs;
+}
+
+
 export function buildSegmentedRing({
   svg,
   planetId,
@@ -76,14 +143,25 @@ export function buildSegmentedRing({
   const r = parseFloat(base.getAttribute("r") || "0");
   const sw = parseFloat(base.getAttribute("stroke-width") || "20");
 
+  // =====================
+  // Stroke width tuning
+  // =====================
+
+  // TEMP: global multiplier for fast visual testing
+  const STROKE_SCALE = 1.1; // try 0.7, 0.85, 1.1, 1.25
+
+  const swScaled = sw * STROKE_SCALE;
+
+
   const OUTLINE_EXTRA = 2;
   const BASE_INSET = 4;
-  const swNow = sw - BASE_INSET;
+  const swNow = swScaled - BASE_INSET;
+
 
   // ✅ Round caps visually extend past the arc endpoints by ~ half the stroke width.
   // To prevent adjacent segments from overlapping in ROUND mode,
   // trim the arc start/end angles by that amount (converted to degrees).
-  const MAX_LAYER_STROKE = Math.max(swNow, sw + OUTLINE_EXTRA);
+  const MAX_LAYER_STROKE = Math.max(swNow, swScaled + OUTLINE_EXTRA);
   const CAP_TRIM_DEG =
     arcCap === "round" ? ((MAX_LAYER_STROKE / 2) / r) * (180 / Math.PI) : 0;
 
@@ -104,10 +182,19 @@ export function buildSegmentedRing({
   }
 
   const planet = transits[planetId];
-  if (!planet || !Array.isArray(planet.segments)) {
+  const isMoonRound = planetId === "Moon" && arcCap === "round";
+
+  // In butt mode, Moon stays EXACT (gate segments from data).
+  // In round mode, Moon becomes lunation segments (waxing/waning).
+  const segments = isMoonRound
+    ? buildMoonPhaseSegments(yearStart, yearEnd)
+    : planet?.segments;
+
+  if (!Array.isArray(segments)) {
     console.warn(`No segments found for ${planetId}`);
     return null;
   }
+
 
   const yearStartMs = yearStart.getTime();
   const yearEndMs = yearEnd.getTime();
@@ -137,7 +224,7 @@ export function buildSegmentedRing({
     svg.appendChild(seam);
   }
 
-  for (const seg of planet.segments) {
+  for (const seg of segments) {
     const segStartMs = new Date(seg.start).getTime();
     const segEndMs = new Date(seg.end).getTime();
 
@@ -174,16 +261,19 @@ export function buildSegmentedRing({
     let startDeg = startFrac * 360 - 90;
     let endDeg = endFrac * 360 - 90;
 
-    // Trim arc ends to compensate for ROUND linecaps
     if (CAP_TRIM_DEG > 0) {
       const delta = ((endDeg - startDeg) % 360 + 360) % 360; // cw span in degrees
+      const eps = 1e-4;
 
-      // If the segment is too small to survive trimming, skip it
-      if (delta <= CAP_TRIM_DEG * 2 + 1e-6) continue;
+      // Strong foundation:
+      // trim as much as we can without ever deleting the segment
+      const trim = Math.max(0, Math.min(CAP_TRIM_DEG, delta / 2 - eps));
 
-      startDeg += CAP_TRIM_DEG;
-      endDeg -= CAP_TRIM_DEG;
+      startDeg += trim;
+      endDeg -= trim;
     }
+
+
 
 
     // Wrap group with events
@@ -209,14 +299,30 @@ export function buildSegmentedRing({
 
     // Helper: append one arc segment (outline/base/color)
     const appendArc = (d: string) => {
-      const outline = makeArcPath(d, "seg-outline", "rgba(255,255,255,0.22)", sw + OUTLINE_EXTRA, arcCap);
+      const strokeColor = isMoonRound
+        ? (seg as any).phase === "waxing"
+          ? "rgba(255,255,255,0.95)"
+          : "rgba(255,255,255,0.35)"
+        : gateColors[(seg as any).gate] || "#fff";
+
+      const outline = makeArcPath(
+        d,
+        "seg-outline",
+        "rgba(255,255,255,0.22)",
+        swScaled + OUTLINE_EXTRA,
+        arcCap
+      );
+
       const baseArc = makeArcPath(d, "seg-base", "#ffffff", swNow, arcCap);
-      const color = makeArcPath(d, "seg-color", gateColors[seg.gate] || "#fff", swNow, arcCap);
+
+      // ✅ single color path, using strokeColor
+      const colorArc = makeArcPath(d, "seg-color", strokeColor, swNow, arcCap);
 
       wrap.appendChild(outline);
       wrap.appendChild(baseArc);
-      wrap.appendChild(color);
+      wrap.appendChild(colorArc);
     };
+
 
     // If the segment crosses the seam (endDeg < startDeg in our rotated space),
     // split into two arcs: [start -> 270]?? actually the seam is at -90deg (12 o'clock).

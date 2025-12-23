@@ -1,22 +1,38 @@
 // src/lib/mandala/ringLayout.ts
 import { CX, CY } from "./constants";
 import { ensureBaseCircle } from "./svgDom";
+import { resolveLayoutKnobs, type MandalaLayoutKnobs, DEFAULT_LAYOUT } from "./layoutConfig";
+
 
 /**
  * Packs active rings into a fixed band (innerR..outerR) using a midline system.
  * Fewer rings => thicker strokes, recentered stack.
  */
-export function applyRingLayout(svg: SVGSVGElement, activeIds: string[]) {
-  const CENTER_R = 391.25;
-  const BAND = 120;
+export type RingLayoutKnobs = {
+  centerR?: number;
+  band?: number;
+  gapRatio?: number;
+  strokeMin?: number;
+  strokeMax?: number;
+};
+
+export function applyRingLayout(
+  svg: SVGSVGElement,
+  activeIds: string[],
+  knobs: RingLayoutKnobs = {}
+) {
+  const CENTER_R = knobs.centerR ?? 391.25;
+  const BAND = knobs.band ?? 120;
+  const gapRatio = knobs.gapRatio ?? 0.35;
+  const strokeMin = knobs.strokeMin ?? 14;
+  const strokeMax = knobs.strokeMax ?? 44;
 
   const n = Math.max(1, activeIds.length);
-  const gapRatio = 0.35;
 
   const thicknessRaw = BAND / (n + (n - 1) * gapRatio);
   const gap = thicknessRaw * gapRatio;
 
-  const stroke = Math.max(14, Math.min(44, thicknessRaw));
+  const stroke = Math.max(strokeMin, Math.min(strokeMax, thicknessRaw));
   const usedBand = n * stroke + (n - 1) * gap;
   const outerEdge = CENTER_R + usedBand / 2;
 
@@ -30,3 +46,4 @@ export function applyRingLayout(svg: SVGSVGElement, activeIds: string[]) {
     base.style.display = "";
   });
 }
+

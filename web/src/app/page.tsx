@@ -5,7 +5,9 @@ import { MandalaClient, ControlPanel, MandalaSvg, RightSidebar } from "@/compone
 import { useEffect } from "react";
 
 export default function Home() {
+
   const [arcCap, setArcCap] = useState<"round" | "butt">("butt");
+  const [showCalendar, setShowCalendar] = useState(true);
   const [year, setYear] = useState(2026);
   const [visiblePlanets, setVisiblePlanets] = useState<Record<string, boolean>>({
     Moon: true,
@@ -21,6 +23,14 @@ export default function Home() {
     Pluto: true,
     NorthNode: true,
     SouthNode: true,
+  });
+
+  const [ringLayout, setRingLayout] = useState<import("@/lib/mandala/ringLayout").RingLayoutKnobs>({
+    centerR: 391.25,
+    band: 120,
+    gapRatio: 0.35,
+    strokeMin: 14,
+    strokeMax: 44,
   });
 
 
@@ -68,10 +78,12 @@ export default function Home() {
       <MandalaClient
         year={year}
         visiblePlanets={visiblePlanetsStable}
+        ringLayout={ringLayout}
         onHover={setHoverInfo}
         onSelect={setSelectedInfo}
         selected={selectedInfo}
         arcCap={arcCap}
+        showCalendar={showCalendar}
       />
 
       <ControlPanel
@@ -83,6 +95,10 @@ export default function Home() {
         hoverInfo={hoverInfo}
         arcCap={arcCap}
         setArcCap={setArcCap}
+        ringLayout={ringLayout}
+        setRingLayout={setRingLayout}
+        showCalendar={showCalendar}
+        setShowCalendar={setShowCalendar}
       />
 
       <RightSidebar
