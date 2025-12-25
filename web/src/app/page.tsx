@@ -36,10 +36,6 @@ export default function Home() {
   const [userChart, setUserChart] = useState<UserChartPayload | null>(null);
   const [isUserPanelOpen, setIsUserPanelOpen] = useState(true);
 
-  useEffect(() => {
-    setUserChart(loadUserChart());
-  }, [userReloadKey]);
-
 
   useEffect(() => {
     // client-only (localStorage)
@@ -130,6 +126,8 @@ export default function Home() {
         selected={selectedInfo}
         arcCap={arcCap}
         showCalendar={showCalendar}
+        userChart={userChart}
+
       />
 
       <div className="mt-6">

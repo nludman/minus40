@@ -3,6 +3,8 @@ import { gateColors } from "@/lib/gateColors";
 import { clamp01, polarToXY } from "./geometry";
 import { createGateLabel, ensureLabelLayer } from "./svgDom";
 import type { SegmentsPayload, HoverInfo } from "./constants";
+import { partnersForGate } from "@/lib/hd/channels";
+
 
 type BuildRingArgs = {
   svg: SVGSVGElement;
@@ -13,6 +15,12 @@ type BuildRingArgs = {
   onHover?: (info: HoverInfo | null) => void;
   onSelect?: (info: HoverInfo | null) => void;
   arcCap?: "round" | "butt";
+  overlay?: {
+    userGates?: Set<number>;
+    userDefinedChannelKeys?: Set<string>;
+  };
+
+
 };
 
 function arcPathD(
@@ -128,6 +136,8 @@ export function buildSegmentedRing({
   onHover,
   onSelect,
   arcCap = "butt", // ✅ default stays butt
+  overlay,
+
 }: BuildRingArgs) {
 
   const base = svg.querySelector(`#${planetId}`) as SVGCircleElement | null;
@@ -194,6 +204,8 @@ export function buildSegmentedRing({
     console.warn(`No segments found for ${planetId}`);
     return null;
   }
+
+  const userGates = overlay?.userGates;
 
 
   const yearStartMs = yearStart.getTime();
@@ -283,6 +295,28 @@ export function buildSegmentedRing({
     (wrap as any).dataset.gate = String(seg.gate);
     (wrap as any).dataset.segKey = segKey;
 
+    const isUserGate = !!userGates?.has((seg as any).gate);
+    wrap.classList.toggle("is-user-gate", isUserGate);
+
+    const gateNum = Number((seg as any).gate);
+    const definedKeys = overlay?.userDefinedChannelKeys;
+
+    const isUserChannel =
+      !!userGates &&
+      partnersForGate(gateNum).some((p) => {
+        if (!userGates.has(p)) return false;
+        const lo = Math.min(gateNum, p);
+        const hi = Math.max(gateNum, p);
+        const key = `${lo}-${hi}`;
+        // EXCLUDE channels the user already has defined
+        if (definedKeys?.has(key)) return false;
+        return true;
+      });
+
+    wrap.classList.toggle("is-user-channel", isUserChannel);
+
+
+
 
     wrap.addEventListener("mouseenter", () =>
       onHover?.({ planet: planetId, gate: seg.gate, start: seg.start, end: seg.end, key: segKey })
@@ -305,22 +339,86 @@ export function buildSegmentedRing({
           : "rgba(255,255,255,0.35)"
         : gateColors[(seg as any).gate] || "#fff";
 
+      const finalColor = isUserChannel ? "rgba(255,80,80,0.95)" : strokeColor;
+
+
+      const outlineStroke = isUserGate
+        ? "rgba(255,60,60,1)"      // punchier
+        : "rgba(255,255,255,0.22)";
+
+      const outlineW = isUserGate
+        ? swScaled + OUTLINE_EXTRA + 10   // thicker
+        : swScaled + OUTLINE_EXTRA;
+
+      // NEW: soft glow outline behind (only for user gate overlaps)
+      //let gateGlow: SVGPathElement | null = null;
+      //if (isUserGate) {
+      //gateGlow = makeArcPath(
+      // d,
+      // "seg-usergate-glow",
+      // "rgba(255,60,60,0.35)",
+      // outlineW + 10,
+      // arcCap
+      //);
+      //}
+
       const outline = makeArcPath(
         d,
         "seg-outline",
-        "rgba(255,255,255,0.22)",
-        swScaled + OUTLINE_EXTRA,
+        outlineStroke,
+        outlineW,
         arcCap
       );
 
+
+
+
       const baseArc = makeArcPath(d, "seg-base", "#ffffff", swNow, arcCap);
 
-      // ✅ single color path, using strokeColor
-      const colorArc = makeArcPath(d, "seg-color", strokeColor, swNow, arcCap);
+      let channelFill: SVGPathElement | null = null;
 
+      if (isUserChannel) {
+        channelFill = makeArcPath(
+          d,
+          "seg-channel-fill",
+          "rgba(255,80,80,0.55)",  // readable but not overpowering
+          swNow,
+          arcCap
+        );
+      }
+
+
+      //let channelGlow: SVGPathElement | null = null;
+      // if (isUserChannel) {
+      // channelGlow = makeArcPath(d, "seg-userchannel-glow", "rgba(255,80,80,0.35)", swNow + 8, arcCap);
+      //}
+
+
+      let tint: SVGPathElement | null = null;
+
+      if (isUserGate && !isUserChannel) {
+        tint = makeArcPath(
+          d,
+          "seg-usergate-tint",
+          "rgba(255,80,80,0.10)",
+          swNow,
+          arcCap
+        );
+      }
+
+
+
+      // ✅ single color path, using strokeColor
+      const colorArc = makeArcPath(d, "seg-color", finalColor, swNow, arcCap);
+
+      //if (gateGlow) wrap.appendChild(gateGlow);
       wrap.appendChild(outline);
       wrap.appendChild(baseArc);
+      if (channelFill) wrap.appendChild(channelFill);
+      //if (channelGlow) wrap.appendChild(channelGlow);
+      if (tint) wrap.appendChild(tint);
       wrap.appendChild(colorArc);
+
     };
 
 
