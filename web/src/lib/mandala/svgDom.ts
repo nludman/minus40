@@ -1,13 +1,22 @@
 // src/lib/mandala/svgDom.ts
-export function ensureLabelLayer(svg: SVGSVGElement) {
-  let g = svg.querySelector("#GateLabels") as SVGGElement | null;
-  if (g) return g;
 
-  g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+export function ensureLabelLayer(svg: SVGSVGElement): SVGGElement {
+  // Prefer the canonical layer if present
+  const canonical = svg.querySelector("#Layer-Labels");
+  if (canonical instanceof SVGGElement) return canonical;
+
+  // Fallback legacy id (if you still have it)
+  const legacy = svg.querySelector("#GateLabels");
+  if (legacy instanceof SVGGElement) return legacy;
+
+  // Create fallback group
+  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
   g.setAttribute("id", "GateLabels");
-  svg.appendChild(g); // on top
+  svg.appendChild(g);
   return g;
 }
+
+
 
 export function createGateLabel(textContent: string) {
   const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -38,13 +47,21 @@ export function makeCircleLike(base: SVGCircleElement) {
 
 export function ensureBaseCircle(svg: SVGSVGElement, id: string, cx: number, cy: number) {
   const existing = svg.querySelector(`#${id}`);
-  if (existing instanceof SVGCircleElement) return existing;
+  if (existing instanceof SVGCircleElement) {
+    existing.setAttribute("pointer-events", "none");
+    return existing;
+  }
 
   const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
   c.setAttribute("id", id);
   c.setAttribute("cx", String(cx));
   c.setAttribute("cy", String(cy));
   c.setAttribute("fill", "none");
+
+  // 🔑 base circles are geometry guides only — never intercept hover/click
+  c.setAttribute("pointer-events", "none");
+
   svg.appendChild(c);
   return c;
 }
+

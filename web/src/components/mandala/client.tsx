@@ -115,14 +115,19 @@ function extractUserDefinedChannelKeys(userChart?: any): Set<string> {
 function updateCalendarOverlay(svg: SVGSVGElement, year: number, activeIds: string[], show: boolean) {
   const NS = "http://www.w3.org/2000/svg";
 
-  // Ensure group exists
-  let g = svg.querySelector("#CalendarOverlay") as SVGGElement | null;
+  // Ensure group exists (in canonical underlay layer)
+  const underlays =
+    (svg.querySelector("#Layer-Underlays") as SVGGElement | null) ?? svg;
+
+  let g = underlays.querySelector("#CalendarOverlay") as SVGGElement | null;
   if (!g) {
     g = document.createElementNS(NS, "g");
-    g.setAttribute("id", "CalendarOverlay");
-    // put it early so it sits behind segments; change to append if you want it on top
-    svg.insertBefore(g, svg.firstChild);
+    g.setAttribute("id", "CalendarOverlay"); //here?
+    underlays.appendChild(g);
   }
+
+  //Prevent overlay from stealing hover/click
+  g.setAttribute("pointer-events", "none");
 
   g.style.display = show ? "" : "none";
   if (!show) return;
@@ -303,8 +308,9 @@ export default function MandalaClient({
       }
 
       // clear labels, but don’t remove the layer node
-      const labelLayer = svg.querySelector("#GateLabels");
+      const labelLayer = svg.querySelector("#Layer-Labels") ?? svg.querySelector("#GateLabels");
       if (labelLayer instanceof SVGGElement) labelLayer.innerHTML = "";
+
     };
   }, []);
 
@@ -412,8 +418,9 @@ export default function MandalaClient({
 
     // Clear labels and rebuild labels for currently-active rings.
     // (BuildRing currently writes labels into a shared GateLabels layer.)
-    const labelLayer = svg.querySelector("#GateLabels");
+    const labelLayer = svg.querySelector("#Layer-Labels") ?? svg.querySelector("#GateLabels");
     if (labelLayer instanceof SVGGElement) labelLayer.innerHTML = "";
+
 
     const prevRadius = prevRadiusRef.current;
 
@@ -498,9 +505,9 @@ export default function MandalaClient({
       if (segGroup instanceof SVGGElement) segGroup.remove();
     }
 
-    // reset label content
-    const labelLayer = svg.querySelector("#GateLabels");
+    const labelLayer = svg.querySelector("#Layer-Labels") ?? svg.querySelector("#GateLabels");
     if (labelLayer instanceof SVGGElement) labelLayer.innerHTML = "";
+
 
     const allIds = getAllIds(svg, payload.transits);
     allIdsRef.current = allIds;

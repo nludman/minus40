@@ -43,7 +43,7 @@ export function applyRingLayout(
     base.setAttribute("r", String(rMid));
     base.setAttribute("stroke-width", String(stroke));
     base.setAttribute("stroke", "transparent");
-    base.style.display = "";
+    base.setAttribute("pointer-events", "none");
   });
 }
 

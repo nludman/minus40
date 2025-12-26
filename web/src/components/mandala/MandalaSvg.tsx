@@ -10,16 +10,21 @@ export default function MandalaSvg() {
       xmlnsXlink="http://www.w3.org/1999/xlink"
       style={{ width: 800, height: 800 }}
     >
+      {/* Static authored geometry (guide circles, etc.) */}
       <g id="MandalaCoded">
-
         <circle id="Pluto" cx="600" cy="600" r="440" strokeWidth="20" />
         <circle id="Neptune" cx="600" cy="600" r="407.5" strokeWidth="20" />
         <circle id="Uranus" cx="600" cy="600" r="375" strokeWidth="20" />
         <circle id="Saturn" cx="600" cy="600" r="342.5" strokeWidth="20" />
-
-
       </g>
 
+      {/* Dynamic layers: modules render into these only */}
+      <g id="Layer-Underlays" />
+      <g id="Layer-Rings" />
+      <g id="Layer-Overlays" />
+      <g id="Layer-Labels" />
+
+      {/* Static label (can stay static for now) */}
       <text
         id="YearLabel"
         fill="white"
@@ -33,8 +38,6 @@ export default function MandalaSvg() {
       >
         <tspan x="600" y="620">2026</tspan>
       </text>
-
-
     </svg>
   );
 }

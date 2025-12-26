@@ -1,10 +1,9 @@
 // src/lib/mandala/buildRing.ts
 import { gateColors } from "@/lib/gateColors";
 import { clamp01, polarToXY } from "./geometry";
-import { createGateLabel, ensureLabelLayer } from "./svgDom";
+import { createGateLabel, ensureLabelLayer, ensureBaseCircle } from "./svgDom";
 import type { SegmentsPayload, HoverInfo } from "./constants";
 import { partnersForGate } from "@/lib/hd/channels";
-
 
 type BuildRingArgs = {
   svg: SVGSVGElement;
@@ -19,19 +18,9 @@ type BuildRingArgs = {
     userGates?: Set<number>;
     userDefinedChannelKeys?: Set<string>;
   };
-
-
 };
 
-function arcPathD(
-  cx: number,
-  cy: number,
-  r: number,
-  startDeg: number,
-  endDeg: number
-) {
-  // Draw clockwise from startDeg to endDeg (degrees in "math space" where 0° is at 3 o'clock)
-  // We are using degrees already mapped to SVG coords (via polarToXY helper).
+function arcPathD(cx: number, cy: number, r: number, startDeg: number, endDeg: number) {
   const delta = ((endDeg - startDeg) % 360 + 360) % 360; // 0..359
   const largeArcFlag = delta > 180 ? 1 : 0;
   const sweepFlag = 1; // clockwise
@@ -64,68 +53,48 @@ type MoonPhaseSeg = {
   start: string;
   end: string;
   phase: "waxing" | "waning";
-  gate: number; // we'll use 0=waxing, 1=waning for hover + coloring
+  gate: number;
 };
 
 function isoZ(ms: number) {
   return new Date(ms).toISOString();
 }
 
-// Approximate lunation model (strong enough for UI rhythm; upgradeable later to Swiss Ephemeris exact events)
+// Approximate lunation model (upgradeable later)
 function buildMoonPhaseSegments(yearStart: Date, yearEnd: Date): MoonPhaseSeg[] {
-  const SYNODIC_DAYS = 29.530588853; // mean synodic month
+  const SYNODIC_DAYS = 29.530588853;
   const SYNODIC_MS = SYNODIC_DAYS * 24 * 60 * 60 * 1000;
 
-  // Common reference new moon epoch: 2000-01-06 18:14 UTC (approx, widely used)
+  // 2000-01-06 18:14 UTC (approx)
   const EPOCH_NEW_MOON_MS = Date.UTC(2000, 0, 6, 18, 14, 0);
 
   const startMs = yearStart.getTime();
   const endMs = yearEnd.getTime();
 
-  // Find the lunation index k near the year start
   const k0 = Math.floor((startMs - EPOCH_NEW_MOON_MS) / SYNODIC_MS) - 2;
 
   const segs: MoonPhaseSeg[] = [];
-
   let prevNew = EPOCH_NEW_MOON_MS + k0 * SYNODIC_MS;
 
-  // Step forward through new moons until we cover the year
   for (let k = k0; k < k0 + 40; k++) {
     const newMoon = EPOCH_NEW_MOON_MS + k * SYNODIC_MS;
     const nextNewMoon = EPOCH_NEW_MOON_MS + (k + 1) * SYNODIC_MS;
     const fullMoon = newMoon + SYNODIC_MS / 2;
 
-    // Clip to year window; we still want segments that overlap the year
     const waxA = Math.max(newMoon, startMs);
     const waxB = Math.min(fullMoon, endMs);
-    if (waxB > waxA) {
-      segs.push({
-        start: isoZ(waxA),
-        end: isoZ(waxB),
-        phase: "waxing",
-        gate: 0,
-      });
-    }
+    if (waxB > waxA) segs.push({ start: isoZ(waxA), end: isoZ(waxB), phase: "waxing", gate: 0 });
 
     const wanA = Math.max(fullMoon, startMs);
     const wanB = Math.min(nextNewMoon, endMs);
-    if (wanB > wanA) {
-      segs.push({
-        start: isoZ(wanA),
-        end: isoZ(wanB),
-        phase: "waning",
-        gate: 1,
-      });
-    }
+    if (wanB > wanA) segs.push({ start: isoZ(wanA), end: isoZ(wanB), phase: "waning", gate: 1 });
 
-    // Stop once we've fully passed the year
     if (newMoon > endMs && prevNew > endMs) break;
     prevNew = newMoon;
   }
 
   return segs;
 }
-
 
 export function buildSegmentedRing({
   svg,
@@ -135,18 +104,16 @@ export function buildSegmentedRing({
   yearEnd,
   onHover,
   onSelect,
-  arcCap = "butt", // ✅ default stays butt
+  arcCap = "butt",
   overlay,
-
 }: BuildRingArgs) {
+  // ✅ Foundation: always ensure a base circle exists.
+  // This prevents “only the original SVG planets work” failures.
+  const base = ensureBaseCircle(svg, planetId, 600, 600);
 
-  const base = svg.querySelector(`#${planetId}`) as SVGCircleElement | null;
-  //const ARC_CAP: SVGLineCap = "butt"; // "round" | "butt"
-
-  if (!base) {
-    console.warn(`Missing circle with id="${planetId}" in SVG`);
-    return null;
-  }
+  // Ensure minimum attributes for geometry.
+  if (!base.getAttribute("stroke-width")) base.setAttribute("stroke-width", "20");
+  if (!base.getAttribute("r")) base.setAttribute("r", "200"); // placeholder; ringLayout will overwrite
 
   const cx = parseFloat(base.getAttribute("cx") || "0");
   const cy = parseFloat(base.getAttribute("cy") || "0");
@@ -156,49 +123,36 @@ export function buildSegmentedRing({
   // =====================
   // Stroke width tuning
   // =====================
-
-  // TEMP: global multiplier for fast visual testing
-  const STROKE_SCALE = 1.1; // try 0.7, 0.85, 1.1, 1.25
-
+  const STROKE_SCALE = 1.1;
   const swScaled = sw * STROKE_SCALE;
-
 
   const OUTLINE_EXTRA = 2;
   const BASE_INSET = 4;
   const swNow = swScaled - BASE_INSET;
 
-
-  // ✅ Round caps visually extend past the arc endpoints by ~ half the stroke width.
-  // To prevent adjacent segments from overlapping in ROUND mode,
-  // trim the arc start/end angles by that amount (converted to degrees).
   const MAX_LAYER_STROKE = Math.max(swNow, swScaled + OUTLINE_EXTRA);
-  const CAP_TRIM_DEG =
-    arcCap === "round" ? ((MAX_LAYER_STROKE / 2) / r) * (180 / Math.PI) : 0;
+  const CAP_TRIM_DEG = arcCap === "round" ? ((MAX_LAYER_STROKE / 2) / r) * (180 / Math.PI) : 0;
 
-
-  const C = 2 * Math.PI * r;
-
-  // Hide original guide circle
+  // Hide original guide circle (but keep it in DOM for layout + geometry)
   base.style.display = "none";
 
+  // ✅ Prefer a canonical layer if present
+  const ringsLayer = (svg.querySelector("#Layer-Rings") as SVGGElement | null) ?? svg;
+
   // Create/clear group
-  let g = svg.querySelector(`#${planetId}-segments`);
+  let g = ringsLayer.querySelector(`#${planetId}-segments`);
   if (g instanceof SVGGElement) {
     g.innerHTML = "";
   } else {
     g = document.createElementNS("http://www.w3.org/2000/svg", "g");
     g.setAttribute("id", `${planetId}-segments`);
-    base.insertAdjacentElement("afterend", g);
+    ringsLayer.appendChild(g);
   }
 
   const planet = transits[planetId];
   const isMoonRound = planetId === "Moon" && arcCap === "round";
 
-  // In butt mode, Moon stays EXACT (gate segments from data).
-  // In round mode, Moon becomes lunation segments (waxing/waning).
-  const segments = isMoonRound
-    ? buildMoonPhaseSegments(yearStart, yearEnd)
-    : planet?.segments;
+  const segments = isMoonRound ? buildMoonPhaseSegments(yearStart, yearEnd) : planet?.segments;
 
   if (!Array.isArray(segments)) {
     console.warn(`No segments found for ${planetId}`);
@@ -206,44 +160,25 @@ export function buildSegmentedRing({
   }
 
   const userGates = overlay?.userGates;
-
+  const definedKeys = overlay?.userDefinedChannelKeys;
 
   const yearStartMs = yearStart.getTime();
   const yearEndMs = yearEnd.getTime();
   const yearTotalMs = yearEndMs - yearStartMs;
 
-  // Padding between segments as an ANGLE, not pixels.
-  // This keeps gaps visually consistent even when the ring radius changes
-  // (which happens when you toggle planets / relayout radii).
-  const PAD_DEG = 0.22; // tweak 0.12–0.35 to taste
+  // Gap padding as degrees
+  const PAD_DEG = 0.22;
   const padFracBase = PAD_DEG / 360;
-
-
-
-  // Optional: draw a true 12 o’clock seam tick for debugging
-  const DEBUG_SEAM = false;
-  if (DEBUG_SEAM) {
-    const seamId = `${planetId}-seam-debug`;
-    svg.querySelector(`#${seamId}`)?.remove();
-    const seam = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    seam.setAttribute("id", seamId);
-    seam.setAttribute("x1", String(cx));
-    seam.setAttribute("y1", String(cy));
-    seam.setAttribute("x2", String(cx));
-    seam.setAttribute("y2", String(cy - (r + 40)));
-    seam.setAttribute("stroke", "rgba(0,255,255,0.8)");
-    seam.setAttribute("stroke-width", "2");
-    svg.appendChild(seam);
-  }
 
   for (const seg of segments) {
     const segStartMs = new Date(seg.start).getTime();
     const segEndMs = new Date(seg.end).getTime();
 
-    // Clip segment to year window
+    // Clip to year window
     const clippedStartMs = Math.max(segStartMs, yearStartMs);
     const clippedEndMs = Math.min(segEndMs, yearEndMs);
-    const segKey = `${planetId}:${seg.gate}:${seg.start}:${seg.end}`;
+    const gateNum = Number((seg as any).gate);
+    const segKey = `${planetId}:${gateNum}:${seg.start}:${seg.end}`;
 
     if (clippedEndMs <= clippedStartMs) continue;
 
@@ -253,53 +188,35 @@ export function buildSegmentedRing({
     startFrac = clamp01(startFrac);
     endFrac = clamp01(endFrac);
 
-    // Apply padding — but never let padding eat small segments.
-    // Cap padding to a % of the segment span so fast movers (Moon) still render.
     const spanFrac = endFrac - startFrac;
-    const padFrac = Math.min(padFracBase, spanFrac * 0.18); // max 18% each side
-
+    const padFrac = Math.min(padFracBase, spanFrac * 0.18);
     startFrac += padFrac;
     endFrac -= padFrac;
-
 
     const EPS = 1e-6;
     startFrac = Math.max(0, Math.min(1 - EPS, startFrac));
     endFrac = Math.max(0, Math.min(1 - EPS, endFrac));
     if (endFrac <= startFrac) continue;
 
-    // Convert fraction to degrees where 0 at 12 o'clock.
-    // Our polarToXY expects angleDeg where 0 is at 3 o'clock.
-    // So we subtract 90° to rotate 12 o'clock to 0-frac.
     let startDeg = startFrac * 360 - 90;
     let endDeg = endFrac * 360 - 90;
 
     if (CAP_TRIM_DEG > 0) {
-      const delta = ((endDeg - startDeg) % 360 + 360) % 360; // cw span in degrees
+      const delta = ((endDeg - startDeg) % 360 + 360) % 360;
       const eps = 1e-4;
-
-      // Strong foundation:
-      // trim as much as we can without ever deleting the segment
       const trim = Math.max(0, Math.min(CAP_TRIM_DEG, delta / 2 - eps));
-
       startDeg += trim;
       endDeg -= trim;
     }
 
-
-
-
-    // Wrap group with events
     const wrap = document.createElementNS("http://www.w3.org/2000/svg", "g");
     wrap.setAttribute("class", "seg-wrap");
     (wrap as any).dataset.planet = planetId;
-    (wrap as any).dataset.gate = String(seg.gate);
+    (wrap as any).dataset.gate = String(gateNum);
     (wrap as any).dataset.segKey = segKey;
 
-    const isUserGate = !!userGates?.has((seg as any).gate);
+    const isUserGate = !!userGates?.has(gateNum);
     wrap.classList.toggle("is-user-gate", isUserGate);
-
-    const gateNum = Number((seg as any).gate);
-    const definedKeys = overlay?.userDefinedChannelKeys;
 
     const isUserChannel =
       !!userGates &&
@@ -308,130 +225,76 @@ export function buildSegmentedRing({
         const lo = Math.min(gateNum, p);
         const hi = Math.max(gateNum, p);
         const key = `${lo}-${hi}`;
-        // EXCLUDE channels the user already has defined
+        // exclude already-natal-defined channels
         if (definedKeys?.has(key)) return false;
         return true;
       });
 
     wrap.classList.toggle("is-user-channel", isUserChannel);
 
+    const hoverInfo: HoverInfo = {
+      planet: planetId,
+      gate: gateNum,
+      start: seg.start,
+      end: seg.end,
+      key: segKey,
+    };
 
-
-
-    wrap.addEventListener("mouseenter", () =>
-      onHover?.({ planet: planetId, gate: seg.gate, start: seg.start, end: seg.end, key: segKey })
-    );
-    wrap.addEventListener("mouseleave", () => onHover?.(null));
-
-
+    // Selection stays on wrap (click bubbles)
     wrap.addEventListener("click", (e) => {
       e.stopPropagation();
-      svg.querySelectorAll(".seg-wrap.is-selected").forEach((el) => el.classList.remove("is-selected"));
+      svg
+        .querySelectorAll(".seg-wrap.is-selected")
+        .forEach((el) => el.classList.remove("is-selected"));
       wrap.classList.add("is-selected");
-      onSelect?.({ planet: planetId, gate: seg.gate, start: seg.start, end: seg.end, key: segKey });
+      onSelect?.(hoverInfo);
     });
 
-    // Helper: append one arc segment (outline/base/color)
     const appendArc = (d: string) => {
+      // ✅ Canonical hit surface: painted but effectively invisible
+      const hit = makeArcPath(d, "seg-hit", "rgba(0,0,0,0.001)", swScaled + 16, arcCap);
+      hit.setAttribute("pointer-events", "stroke");
+
+      // Hover lives on the actual hit path (no bubbling ambiguity)
+      hit.addEventListener("pointerenter", () => onHover?.(hoverInfo));
+      hit.addEventListener("pointerleave", () => onHover?.(null));
+
       const strokeColor = isMoonRound
         ? (seg as any).phase === "waxing"
           ? "rgba(255,255,255,0.95)"
           : "rgba(255,255,255,0.35)"
-        : gateColors[(seg as any).gate] || "#fff";
+        : gateColors[gateNum] || "#fff";
 
       const finalColor = isUserChannel ? "rgba(255,80,80,0.95)" : strokeColor;
 
+      const outlineStroke = isUserGate ? "rgba(255,60,60,1)" : "rgba(255,255,255,0.22)";
+      const outlineW = isUserGate ? swScaled + OUTLINE_EXTRA + 10 : swScaled + OUTLINE_EXTRA;
 
-      const outlineStroke = isUserGate
-        ? "rgba(255,60,60,1)"      // punchier
-        : "rgba(255,255,255,0.22)";
-
-      const outlineW = isUserGate
-        ? swScaled + OUTLINE_EXTRA + 10   // thicker
-        : swScaled + OUTLINE_EXTRA;
-
-      // NEW: soft glow outline behind (only for user gate overlaps)
-      //let gateGlow: SVGPathElement | null = null;
-      //if (isUserGate) {
-      //gateGlow = makeArcPath(
-      // d,
-      // "seg-usergate-glow",
-      // "rgba(255,60,60,0.35)",
-      // outlineW + 10,
-      // arcCap
-      //);
-      //}
-
-      const outline = makeArcPath(
-        d,
-        "seg-outline",
-        outlineStroke,
-        outlineW,
-        arcCap
-      );
-
-
-
-
+      const outline = makeArcPath(d, "seg-outline", outlineStroke, outlineW, arcCap);
       const baseArc = makeArcPath(d, "seg-base", "#ffffff", swNow, arcCap);
 
       let channelFill: SVGPathElement | null = null;
-
       if (isUserChannel) {
-        channelFill = makeArcPath(
-          d,
-          "seg-channel-fill",
-          "rgba(255,80,80,0.55)",  // readable but not overpowering
-          swNow,
-          arcCap
-        );
+        channelFill = makeArcPath(d, "seg-channel-fill", "rgba(255,80,80,0.85)", swNow, arcCap);
       }
-
-
-      //let channelGlow: SVGPathElement | null = null;
-      // if (isUserChannel) {
-      // channelGlow = makeArcPath(d, "seg-userchannel-glow", "rgba(255,80,80,0.35)", swNow + 8, arcCap);
-      //}
-
 
       let tint: SVGPathElement | null = null;
-
       if (isUserGate && !isUserChannel) {
-        tint = makeArcPath(
-          d,
-          "seg-usergate-tint",
-          "rgba(255,80,80,0.10)",
-          swNow,
-          arcCap
-        );
+        tint = makeArcPath(d, "seg-usergate-tint", "rgba(255,80,80,0.10)", swNow, arcCap);
       }
 
-
-
-      // ✅ single color path, using strokeColor
       const colorArc = makeArcPath(d, "seg-color", finalColor, swNow, arcCap);
 
-      //if (gateGlow) wrap.appendChild(gateGlow);
+      wrap.appendChild(hit);
       wrap.appendChild(outline);
       wrap.appendChild(baseArc);
       if (channelFill) wrap.appendChild(channelFill);
-      //if (channelGlow) wrap.appendChild(channelGlow);
       if (tint) wrap.appendChild(tint);
       wrap.appendChild(colorArc);
-
     };
 
-
-    // If the segment crosses the seam (endDeg < startDeg in our rotated space),
-    // split into two arcs: [start -> 270]?? actually the seam is at -90deg (12 o'clock).
-    // Easiest is to split by fraction: if endFrac < startFrac, but we already ensured endFrac > startFrac.
-    // However the "deg" can wrap due to -90 shift; so detect crossing by raw fraction window instead:
-    // A segment "crosses seam" only if it was originally crossing year boundary; but our year clipping prevents that.
-    // Still, for safety, handle deg wrap: if endDeg <= startDeg, split at (360-90)=270deg boundary.
     if (endDeg <= startDeg) {
-      // Part 1: start -> (360-90)=270
       appendArc(arcPathD(cx, cy, r, startDeg, 270));
-      // Part 2: -90 -> end
       appendArc(arcPathD(cx, cy, r, -90, endDeg));
     } else {
       appendArc(arcPathD(cx, cy, r, startDeg, endDeg));
@@ -446,24 +309,21 @@ export function buildSegmentedRing({
     if (segDays >= MIN_LABEL_DAYS) {
       const labelLayer = ensureLabelLayer(svg);
 
-      // Dedupe per planet+gate
-      const key = segKey; // unique per occurrence
-
-      if (labelLayer.querySelector(`[data-label-key="${key}"]`)) continue;
+      if (labelLayer.querySelector(`[data-label-key="${segKey}"]`)) continue;
 
       const midFrac = (startFrac + endFrac) / 2;
       const midDeg = midFrac * 360 - 90;
       const pos = polarToXY(cx, cy, r, midDeg);
 
-      const label = createGateLabel(String(seg.gate));
+      const label = createGateLabel(String(gateNum));
       label.setAttribute("x", String(pos.x));
       label.setAttribute("y", String(pos.y));
       label.setAttribute("opacity", "0.7");
-      (label as any).dataset.labelKey = key;
+      (label as any).dataset.labelKey = segKey;
 
       labelLayer.appendChild(label);
     }
   }
 
-  return { C };
+  return { C: 2 * Math.PI * r };
 }
