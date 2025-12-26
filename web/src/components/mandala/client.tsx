@@ -33,6 +33,10 @@ type MandalaClientProps = {
   ringLayout?: RingLayoutKnobs;
   showCalendar?: boolean;
   userChart?: UserChartPayload | null;
+  gapPx?: {
+    round?: number;
+    butt?: number;
+  };
 
 };
 
@@ -239,6 +243,7 @@ export default function MandalaClient({
   onSelect,
   selected,
   arcCap = "butt",
+  gapPx,
   ringLayout,
   showCalendar = true,
 
@@ -252,6 +257,7 @@ export default function MandalaClient({
 
   userChart,
 
+
 }: MandalaClientProps) {
 
   const prevRadiusRef = useRef<Map<string, number>>(new Map());
@@ -263,8 +269,12 @@ export default function MandalaClient({
 
   // “Data for the current year” (in-memory only; not a caching “system”)
   const transitsRef = useRef<SegmentsPayload["transits"] | null>(null);
-  const yearStartRef = useRef<Date | null>(null);
-  const yearEndRef = useRef<Date | null>(null);
+
+  const rangeStartRef = useRef<Date | null>(null);
+  const rangeEndRef = useRef<Date | null>(null);
+  const timeViewRef = useRef<"calendar" | "tracker">("calendar");
+  const anchorMsRef = useRef<number | null>(null);
+
   const allIdsRef = useRef<string[]>([]);
 
   const userGatesRef = useRef<Set<number>>(new Set());
@@ -393,12 +403,49 @@ export default function MandalaClient({
   }
 
 
-  async function fetchYearSegments(y: number, reset = false): Promise<SegmentsPayload> {
-    const qs = reset ? `?year=${y}&reset=1` : `?year=${y}`;
-    const res = await fetch(`/api/segments-year${qs}`);
+  async function fetchYearSegments(
+    y: number,
+    reset = false,
+    opts?: {
+      view?: "calendar" | "tracker";
+      span?: "year" | "quarter" | "month" | "week";
+      q?: number;
+      m?: number;
+      // tracker:
+      anchorIso?: string;
+      backDays?: number;
+      forwardDays?: number;
+      startIso?: string;
+      endIso?: string;
+    }
+  ): Promise<SegmentsPayload> {
+    const p = new URLSearchParams();
+    p.set("year", String(y));
+    if (reset) p.set("reset", "1");
+
+    const view = opts?.view ?? "calendar";
+    p.set("view", view);
+
+    if (view === "calendar") {
+      p.set("span", opts?.span ?? "year");
+      if (typeof opts?.q === "number") p.set("q", String(opts.q));
+      if (typeof opts?.m === "number") p.set("m", String(opts.m));
+      if (opts?.startIso) p.set("start", opts.startIso);
+      if (opts?.endIso) p.set("end", opts.endIso);
+    } else {
+      // tracker
+      if (opts?.anchorIso) p.set("anchor", opts.anchorIso);
+      if (typeof opts?.backDays === "number") p.set("backDays", String(opts.backDays));
+      if (typeof opts?.forwardDays === "number") p.set("forwardDays", String(opts.forwardDays));
+      if (opts?.startIso) p.set("start", opts.startIso);
+      if (opts?.endIso) p.set("end", opts.endIso);
+    }
+
+    const res = await fetch(`/api/segments-year?${p.toString()}`);
     if (!res.ok) throw new Error("Failed to fetch segments");
     return res.json();
   }
+
 
 
   function getAllIds(svg: SVGSVGElement, transits: SegmentsPayload["transits"]) {
@@ -412,9 +459,12 @@ export default function MandalaClient({
 
   function rebuildActiveRings(svg: SVGSVGElement, activeIds: string[]) {
     const transits = transitsRef.current;
-    const YEAR_START = yearStartRef.current;
-    const YEAR_END = yearEndRef.current;
-    if (!transits || !YEAR_START || !YEAR_END) return;
+
+    const RANGE_START = rangeStartRef.current;
+    const RANGE_END = rangeEndRef.current;
+
+    if (!transits || !RANGE_START || !RANGE_END) return;
+
 
     // Clear labels and rebuild labels for currently-active rings.
     // (BuildRing currently writes labels into a shared GateLabels layer.)
@@ -431,15 +481,20 @@ export default function MandalaClient({
         svg,
         planetId: id,
         transits,
-        yearStart: YEAR_START,
-        yearEnd: YEAR_END,
+        yearStart: RANGE_START,
+        yearEnd: RANGE_END,
         onHover,
         onSelect,
         arcCap: arcCapRef.current,
+        gapPx,
 
         overlay: {
           userGates: userGatesRef.current,
           userDefinedChannelKeys: userDefinedChannelKeysRef.current,
+        },
+        timeMap: {
+          view: timeViewRef.current,
+          anchorMs: anchorMsRef.current ?? undefined,
         },
 
       });
@@ -484,11 +539,24 @@ export default function MandalaClient({
     if (yearText) yearText.textContent = String(payload.year);
 
     transitsRef.current = payload.transits;
-    yearStartRef.current = new Date(payload.year_start_utc);
-    yearEndRef.current = new Date(payload.year_end_utc);
 
-    const yearStartMs = yearStartRef.current.getTime();
-    const yearEndMs = yearEndRef.current.getTime();
+    rangeStartRef.current = new Date(payload.range_start_utc ?? payload.year_start_utc);
+    rangeEndRef.current = new Date(payload.range_end_utc ?? payload.year_end_utc);
+
+    timeViewRef.current = (payload.view === "tracker" ? "tracker" : "calendar");
+    anchorMsRef.current = payload.anchor_utc ? Date.parse(payload.anchor_utc) : null;
+
+
+    console.log("[range]", {
+      view: timeViewRef.current,
+      start: rangeStartRef.current?.toISOString(),
+      end: rangeEndRef.current?.toISOString(),
+    });
+
+
+    const yearStartMs = rangeStartRef.current?.getTime() ?? Date.parse(payload.year_start_utc);
+    const yearEndMs = rangeEndRef.current?.getTime() ?? Date.parse(payload.year_end_utc);
+
 
     // Dev-only: validate segment invariants per planet (seams, continuity, no negative lengths)
     for (const planetId of Object.keys(payload.transits)) {
@@ -518,15 +586,20 @@ export default function MandalaClient({
 
 
     applyRingLayout(svg, activeIds, ringLayout);
-    updateCalendarOverlay(svg, year, activeIds, showCalendar);
+    const isCalendarView = timeViewRef.current === "calendar";
+    updateCalendarOverlay(svg, year, activeIds, !!showCalendar && isCalendarView);
+
     rebuildActiveRings(svg, activeIds);
     applyVisibility(svg, allIds, vp);
     applySelectedClass(svg, selected ?? null);
 
     // (optional debug)
     (window as any).transits = payload.transits;
-    (window as any).YEAR_START = yearStartRef.current;
-    (window as any).YEAR_END = yearEndRef.current;
+    (window as any).RANGE_START = rangeStartRef.current;
+    (window as any).RANGE_END = rangeEndRef.current;
+    (window as any).TIME_VIEW = timeViewRef.current;
+    (window as any).ANCHOR_UTC = payload.anchor_utc ?? null;
+
   }
 
   function rebuildOnly() {
@@ -549,7 +622,9 @@ export default function MandalaClient({
 
 
     applyRingLayout(svg, activeIds, ringLayout);
-    updateCalendarOverlay(svg, year, activeIds, showCalendar);
+    const isCalendarView = timeViewRef.current === "calendar";
+    updateCalendarOverlay(svg, year, activeIds, !!showCalendar && isCalendarView);
+
 
     // Rebuild active rings (no fetch). This keeps labels correct and allows radius animations.
     rebuildActiveRings(svg, activeIds);
@@ -602,7 +677,9 @@ export default function MandalaClient({
     const svg = svgRef.current;
     if (!svg) return;
 
-    updateCalendarOverlay(svg, year, activeIdsRef.current, !!showCalendar);
+    const isCalendarView = timeViewRef.current === "calendar";
+    updateCalendarOverlay(svg, year, activeIdsRef.current, !!showCalendar && isCalendarView);
+
   }, [showCalendar, year, ringLayout]);
 
 

@@ -24,8 +24,17 @@ export type SegmentsPayload = {
   year: number;
   year_start_utc: string;
   year_end_utc: string;
-  transits: Record<string, PlanetSegments>;
+
+  // NEW
+  range_start_utc: string;
+  range_end_utc: string;
+  view?: "calendar" | "tracker";
+  span?: string; // "year" | "quarter" | "month" | "week" | "custom"
+  anchor_utc?: string; // tracker only
+
+  transits: Record<string, { segments: { start: string; end: string; gate: number }[] }>;
 };
+
 
 export type HoverInfo =
   | { planet: string; gate: number; start: string; end: string; key: string }

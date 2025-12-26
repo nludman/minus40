@@ -11,6 +11,9 @@ import UserChartVisual from "@/components/mandala/UserChartVisual";
 export default function Home() {
 
   const [arcCap, setArcCap] = useState<"round" | "butt">("butt");
+  const [gapPxRound, setGapPxRound] = useState(0.5);
+  const [gapPxButt, setGapPxButt] = useState(0.35);
+
   const [showCalendar, setShowCalendar] = useState(true);
   const [year, setYear] = useState(2026);
   const [visiblePlanets, setVisiblePlanets] = useState<Record<string, boolean>>({
@@ -127,6 +130,8 @@ export default function Home() {
         arcCap={arcCap}
         showCalendar={showCalendar}
         userChart={userChart}
+        gapPx={{ round: gapPxRound, butt: gapPxButt }}
+
 
       />
 
@@ -150,6 +155,11 @@ export default function Home() {
         setRingLayout={setRingLayout}
         showCalendar={showCalendar}
         setShowCalendar={setShowCalendar}
+        gapPxRound={gapPxRound}
+        setGapPxRound={setGapPxRound}
+        gapPxButt={gapPxButt}
+        setGapPxButt={setGapPxButt}
+
 
       />
 

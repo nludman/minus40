@@ -18,10 +18,20 @@ type BuildRingArgs = {
     userGates?: Set<number>;
     userDefinedChannelKeys?: Set<string>;
   };
+  timeMap?: {
+    view: "calendar" | "tracker";
+    anchorMs?: number; // required for tracker behavior
+  };
+  gapPx?: {
+    round?: number; // per-edge gap in px
+    butt?: number;  // per-edge gap in px
+  };
+
 };
 
 function arcPathD(cx: number, cy: number, r: number, startDeg: number, endDeg: number) {
-  const delta = ((endDeg - startDeg) % 360 + 360) % 360; // 0..359
+  // Normalize delta to 0..359.999...
+  const delta = ((endDeg - startDeg) % 360 + 360) % 360;
   const largeArcFlag = delta > 180 ? 1 : 0;
   const sweepFlag = 1; // clockwise
 
@@ -106,9 +116,10 @@ export function buildSegmentedRing({
   onSelect,
   arcCap = "butt",
   overlay,
+  timeMap,
+  gapPx
 }: BuildRingArgs) {
   // ✅ Foundation: always ensure a base circle exists.
-  // This prevents “only the original SVG planets work” failures.
   const base = ensureBaseCircle(svg, planetId, 600, 600);
 
   // Ensure minimum attributes for geometry.
@@ -130,11 +141,16 @@ export function buildSegmentedRing({
   const BASE_INSET = 4;
   const swNow = swScaled - BASE_INSET;
 
-  const MAX_LAYER_STROKE = Math.max(swNow, swScaled + OUTLINE_EXTRA);
-  const CAP_TRIM_DEG = arcCap === "round" ? ((MAX_LAYER_STROKE / 2) / r) * (180 / Math.PI) : 0;
+  // ✅ FIX: cap trim should be based on the *actual painted arc width* (swNow),
+  // NOT the cosmetic glow/outline width.
+  const CAP_TRIM_DEG =
+    arcCap === "round"
+      ? ((swNow / 2) / Math.max(1, r)) * (180 / Math.PI) * 1.1 // tune 0.70..1.0
+      : 0;
 
-  // Hide original guide circle (but keep it in DOM for layout + geometry)
-  base.style.display = "none";
+  // Keep guide circle in DOM (layout/geometry) but hide it cleanly
+  base.setAttribute("stroke", "transparent");
+  base.style.display = "";
 
   // ✅ Prefer a canonical layer if present
   const ringsLayer = (svg.querySelector("#Layer-Rings") as SVGGElement | null) ?? svg;
@@ -151,7 +167,6 @@ export function buildSegmentedRing({
 
   const planet = transits[planetId];
   const isMoonRound = planetId === "Moon" && arcCap === "round";
-
   const segments = isMoonRound ? buildMoonPhaseSegments(yearStart, yearEnd) : planet?.segments;
 
   if (!Array.isArray(segments)) {
@@ -166,9 +181,38 @@ export function buildSegmentedRing({
   const yearEndMs = yearEnd.getTime();
   const yearTotalMs = yearEndMs - yearStartMs;
 
-  // Gap padding as degrees
-  const PAD_DEG = 0.22;
-  const padFracBase = PAD_DEG / 360;
+  const viewMode = timeMap?.view ?? "calendar";
+
+  // time -> angle mapping (calendar or tracker)
+  const timeToDeg = (tMs: number) => {
+    if (viewMode === "tracker") {
+      const anchor = timeMap?.anchorMs;
+      if (!anchor) {
+        const frac = (tMs - yearStartMs) / yearTotalMs;
+        return clamp01(frac) * 360 - 90;
+      }
+      const offset = (tMs - anchor) / yearTotalMs;
+      return 90 - offset * 360;
+    }
+    const frac = (tMs - yearStartMs) / yearTotalMs;
+    return clamp01(frac) * 360 - 90;
+  };
+
+  // ==========================================================
+  // GAP RULE (pixel-based)
+  // ==========================================================
+  // You said butt gap looks good; round gap is mostly CAP_TRIM. Keep this.
+  const GAP_PX_PER_EDGE =
+    arcCap === "round"
+      ? (gapPx?.round ?? 0.5) // default round gap per-edge
+      : (gapPx?.butt ?? 0.35); // default butt gap per-edge
+
+  const gapDegBase = (GAP_PX_PER_EDGE / Math.max(1, r)) * (180 / Math.PI);
+  const gapFracBase = gapDegBase / 360;
+
+  // For full-span segments, we force a seam gap (also in pixels)
+  const FULL_SPAN_SEAM_GAP_PX = arcCap === "round" ? 0.9 : 0.6;
+  const fullSpanSeamGapDeg = (FULL_SPAN_SEAM_GAP_PX / Math.max(1, r)) * (180 / Math.PI);
 
   for (const seg of segments) {
     const segStartMs = new Date(seg.start).getTime();
@@ -177,40 +221,69 @@ export function buildSegmentedRing({
     // Clip to year window
     const clippedStartMs = Math.max(segStartMs, yearStartMs);
     const clippedEndMs = Math.min(segEndMs, yearEndMs);
+    if (clippedEndMs <= clippedStartMs) continue;
+
     const gateNum = Number((seg as any).gate);
     const segKey = `${planetId}:${gateNum}:${seg.start}:${seg.end}`;
 
-    if (clippedEndMs <= clippedStartMs) continue;
-
+    // Fractions in [0..1]
     let startFrac = (clippedStartMs - yearStartMs) / yearTotalMs;
     let endFrac = (clippedEndMs - yearStartMs) / yearTotalMs;
 
     startFrac = clamp01(startFrac);
     endFrac = clamp01(endFrac);
 
-    const spanFrac = endFrac - startFrac;
-    const padFrac = Math.min(padFracBase, spanFrac * 0.18);
-    startFrac += padFrac;
-    endFrac -= padFrac;
+    // Apply gap (in fraction space), but never let it eat tiny segments
+    const spanFrac0 = endFrac - startFrac;
+    const edgeGapFrac = Math.min(gapFracBase, spanFrac0 * 0.18);
+    startFrac += edgeGapFrac;
+    endFrac -= edgeGapFrac;
 
+    // Clamp away from exact 1.0 to reduce seam degeneracy
     const EPS = 1e-6;
     startFrac = Math.max(0, Math.min(1 - EPS, startFrac));
     endFrac = Math.max(0, Math.min(1 - EPS, endFrac));
     if (endFrac <= startFrac) continue;
 
-    let startDeg = startFrac * 360 - 90;
-    let endDeg = endFrac * 360 - 90;
+    // Convert padded fracs back to padded times, and map THOSE to degrees.
+    const paddedStartMs = yearStartMs + startFrac * yearTotalMs;
+    const paddedEndMs = yearStartMs + endFrac * yearTotalMs;
 
+    let startDeg = timeToDeg(paddedStartMs);
+    let endDeg = timeToDeg(paddedEndMs);
+
+    // Round cap trim: prevent caps from crossing seams or bridging gaps
     if (CAP_TRIM_DEG > 0) {
       const delta = ((endDeg - startDeg) % 360 + 360) % 360;
+
+      // Minimum keep size so small segments don't get erased when trim/gap increases.
+      // Think of this as "leave at least ~N pixels of arc".
+      const MIN_KEEP_PX = arcCap === "round" ? 0.8 : 0.25; // tune later
+      const MIN_KEEP_DEG = (MIN_KEEP_PX / Math.max(1, r)) * (180 / Math.PI);
+
       const eps = 1e-4;
-      const trim = Math.max(0, Math.min(CAP_TRIM_DEG, delta / 2 - eps));
+
+      // We trim both ends, so the remaining span is: delta - 2*trim.
+      // Enforce remaining >= MIN_KEEP_DEG.
+      const maxTrimByKeep = Math.max(0, (delta - MIN_KEEP_DEG) / 2);
+
+      const trim = Math.max(0, Math.min(CAP_TRIM_DEG, maxTrimByKeep - eps));
       startDeg += trim;
       endDeg -= trim;
     }
 
+
+    // Detect "full-span" segments (slow movers can span essentially the entire window).
+    const rawSpanFrac = (clippedEndMs - clippedStartMs) / yearTotalMs;
+    const deltaDeg = ((endDeg - startDeg) % 360 + 360) % 360;
+
+    // Only treat as full ring when it truly covers the whole visible window.
+    const looksFullSpan = rawSpanFrac > 0.985;
+
+    // Wrap group
     const wrap = document.createElementNS("http://www.w3.org/2000/svg", "g");
     wrap.setAttribute("class", "seg-wrap");
+
     (wrap as any).dataset.planet = planetId;
     (wrap as any).dataset.gate = String(gateNum);
     (wrap as any).dataset.segKey = segKey;
@@ -225,8 +298,7 @@ export function buildSegmentedRing({
         const lo = Math.min(gateNum, p);
         const hi = Math.max(gateNum, p);
         const key = `${lo}-${hi}`;
-        // exclude already-natal-defined channels
-        if (definedKeys?.has(key)) return false;
+        if (definedKeys?.has(key)) return false; // exclude already-natal-defined channels
         return true;
       });
 
@@ -240,7 +312,6 @@ export function buildSegmentedRing({
       key: segKey,
     };
 
-    // Selection stays on wrap (click bubbles)
     wrap.addEventListener("click", (e) => {
       e.stopPropagation();
       svg
@@ -251,11 +322,9 @@ export function buildSegmentedRing({
     });
 
     const appendArc = (d: string) => {
-      // ✅ Canonical hit surface: painted but effectively invisible
       const hit = makeArcPath(d, "seg-hit", "rgba(0,0,0,0.001)", swScaled + 16, arcCap);
       hit.setAttribute("pointer-events", "stroke");
 
-      // Hover lives on the actual hit path (no bubbling ambiguity)
       hit.addEventListener("pointerenter", () => onHover?.(hoverInfo));
       hit.addEventListener("pointerleave", () => onHover?.(null));
 
@@ -293,16 +362,26 @@ export function buildSegmentedRing({
       wrap.appendChild(colorArc);
     };
 
-    if (endDeg <= startDeg) {
-      appendArc(arcPathD(cx, cy, r, startDeg, 270));
-      appendArc(arcPathD(cx, cy, r, -90, endDeg));
+    // ✅ Draw arcs AFTER appendArc exists
+    if (looksFullSpan) {
+      // Draw a single near-360 arc with a tiny seam gap.
+      // This avoids the visible "midpoint split" that happens with two 180° arcs.
+      const effectiveEnd = startDeg + (360 - fullSpanSeamGapDeg);
+      appendArc(arcPathD(cx, cy, r, startDeg, effectiveEnd));
     } else {
+      // Keep this gentle; cap trim should do most of the work now.
+      if (arcCap === "round") {
+        const MIN_ARC_PX = 0.25; // tune 0.15..0.5
+        const MIN_ARC_DEG = (MIN_ARC_PX / Math.max(1, r)) * (180 / Math.PI);
+        if (deltaDeg < MIN_ARC_DEG) continue;
+      }
+
       appendArc(arcPathD(cx, cy, r, startDeg, endDeg));
     }
 
     (g as SVGGElement).appendChild(wrap);
 
-    // Labels
+    // Labels (keep label logic in calendar fraction space; it's stable + readable)
     const MIN_LABEL_DAYS = 7;
     const segDays = (clippedEndMs - clippedStartMs) / (24 * 60 * 60 * 1000);
 
@@ -312,8 +391,8 @@ export function buildSegmentedRing({
       if (labelLayer.querySelector(`[data-label-key="${segKey}"]`)) continue;
 
       const midFrac = (startFrac + endFrac) / 2;
-      const midDeg = midFrac * 360 - 90;
-      const pos = polarToXY(cx, cy, r, midDeg);
+      const midDegLabel = midFrac * 360 - 90;
+      const pos = polarToXY(cx, cy, r, midDegLabel);
 
       const label = createGateLabel(String(gateNum));
       label.setAttribute("x", String(pos.x));
