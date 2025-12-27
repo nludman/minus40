@@ -263,6 +263,8 @@ export default function MandalaClient({
   const prevRadiusRef = useRef<Map<string, number>>(new Map());
   const visiblePlanetsRef = useRef<Record<string, boolean>>(visiblePlanets);
   const arcCapRef = useRef<"round" | "butt">(arcCap);
+  const gapPxRef = useRef(gapPx);
+
   const activeIdsRef = useRef<string[]>([]);
 
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -486,7 +488,7 @@ export default function MandalaClient({
         onHover,
         onSelect,
         arcCap: arcCapRef.current,
-        gapPx,
+        gapPx: gapPxRef.current,
 
         overlay: {
           userGates: userGatesRef.current,
@@ -656,6 +658,10 @@ export default function MandalaClient({
     arcCapRef.current = arcCap;
   }, [arcCap]);
 
+  useEffect(() => {
+    gapPxRef.current = gapPx;
+  }, [gapPx]);
+
   // Planet toggles = no fetch, just relayout + rebuild segments/labels from existing data
   useEffect(() => {
     updateVisibleOnly();
@@ -666,6 +672,11 @@ export default function MandalaClient({
     updateVisibleOnly();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arcCap]);
+
+  useEffect(() => {
+    updateVisibleOnly();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gapPx?.round, gapPx?.butt]);
 
   useEffect(() => {
     const svg = svgRef.current;
