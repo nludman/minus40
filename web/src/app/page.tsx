@@ -9,6 +9,8 @@ import UserChartVisual from "@/components/mandala/UserChartVisual";
 
 import { clearUserChart, loadUserChart, saveUserChart, type UserChartPayload } from "@/lib/userChartCache";
 import type { HoverInfo } from "@/lib/mandala/constants";
+import TransitJournalViews from "@/components/mandala/TransitJournalViews";
+
 
 export default function Home() {
   // =========================
@@ -46,6 +48,8 @@ export default function Home() {
     // default: current year if URL missing/invalid
     return Number.isFinite(y) ? y : new Date().getFullYear();
   }, [searchParams]);
+
+  const [journalReloadKey, setJournalReloadKey] = useState(0);
 
   const [year, setYear] = useState(yearFromUrl);
   const [nav, setNav] = useState<NavState>(navFromUrl);
@@ -253,7 +257,18 @@ export default function Home() {
         onResetUserCache={resetUserCache}
         isOpen={isUserPanelOpen}
         onToggleOpen={() => setIsUserPanelOpen((v) => !v)}
+
+        year={year}
+        selected={selectedInfo}
+        onJournalSaved={() => setJournalReloadKey((k) => k + 1)}
       />
+
+
+      <TransitJournalViews
+        reloadKey={journalReloadKey}
+        selected={selectedInfo}
+      />
+
     </main>
   );
 }
