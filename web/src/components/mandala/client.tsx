@@ -17,6 +17,10 @@ import type { RingLayoutKnobs } from "@/lib/mandala/ringLayout";
 import { buildSegmentedRing } from "@/lib/mandala/buildRing";
 import { animateRingIn, animateRingMove } from "@/lib/mandala/animations";
 import type { UserChartPayload } from "@/lib/userChartCache";
+import { ensureTodayLayer } from "@/lib/mandala/svgDom";
+import { clamp01 } from "@/lib/mandala/geometry";
+import { polarToXY } from "@/lib/mandala/geometry";
+
 
 
 type MandalaClientProps = {
@@ -26,8 +30,8 @@ type MandalaClientProps = {
   onYearReloadConsumed?: () => void;
   userReloadKey?: number; // not used yet, but reserved
   visiblePlanets: Record<string, boolean>;
-  onHover?: (info: HoverInfo) => void;
-  onSelect?: (info: HoverInfo) => void;
+  onHover?: (info: HoverInfo | null) => void;
+  onSelect?: (info: HoverInfo | null) => void;
   selected?: HoverInfo | null;
   arcCap?: "round" | "butt";
   ringLayout?: RingLayoutKnobs;
@@ -37,8 +41,43 @@ type MandalaClientProps = {
     round?: number;
     butt?: number;
   };
+  nav?: {
+    view?: "calendar" | "tracker";
+    span?: "year" | "quarter" | "month" | "week";
+    m?: number;
+    q?: number;
+  };
+  onNavigate?: (patch: {
+    view?: "calendar" | "tracker";
+    span?: "year" | "quarter" | "month" | "week";
+    m?: number;
+    q?: number;
+  }) => void;
 
 };
+
+function timeToDeg(
+  tMs: number,
+  rangeStartMs: number,
+  rangeEndMs: number,
+  view: "calendar" | "tracker",
+  anchorMs?: number | null
+) {
+  const total = rangeEndMs - rangeStartMs;
+  if (total <= 0) return -90;
+
+  if (view === "tracker") {
+    if (!anchorMs) {
+      const frac = (tMs - rangeStartMs) / total;
+      return clamp01(frac) * 360 - 90;
+    }
+    const offset = (tMs - anchorMs) / total;
+    return 90 - offset * 360;
+  }
+
+  const frac = (tMs - rangeStartMs) / total;
+  return clamp01(frac) * 360 - 90;
+}
 
 
 function extractUserGates(userChart?: any): Set<number> {
@@ -116,7 +155,18 @@ function extractUserDefinedChannelKeys(userChart?: any): Set<string> {
 }
 
 
-function updateCalendarOverlay(svg: SVGSVGElement, year: number, activeIds: string[], show: boolean) {
+function updateCalendarOverlay(
+  svg: SVGSVGElement,
+  year: number,
+  activeIds: string[],
+  show: boolean,
+  opts?: {
+    mode?: "year" | "month";      // NEW
+    selectedMonth?: number;       // NEW (0..11)
+    onMonthClick?: (m: number) => void;
+  }
+) {
+
   const NS = "http://www.w3.org/2000/svg";
 
   // Ensure group exists (in canonical underlay layer)
@@ -130,8 +180,9 @@ function updateCalendarOverlay(svg: SVGSVGElement, year: number, activeIds: stri
     underlays.appendChild(g);
   }
 
-  //Prevent overlay from stealing hover/click
-  g.setAttribute("pointer-events", "none");
+  // Allow interaction on month labels, but disable pointer events on non-interactive shapes below.
+  g.setAttribute("pointer-events", "auto");
+
 
   g.style.display = show ? "" : "none";
   if (!show) return;
@@ -153,10 +204,21 @@ function updateCalendarOverlay(svg: SVGSVGElement, year: number, activeIds: stri
   // Outer edge of outermost ring
   const outerEdge = rMid + sw / 2;
 
-  // Overlay styling knobs (tweak later / can be UI controls)
-  const lineInner = outerEdge - 26;
-  const lineOuter = outerEdge + 16;
-  const labelR = outerEdge + 34;
+  const mode = opts?.mode ?? "year";
+
+  // Base positioning (year mode)
+  let lineInner = outerEdge - 26;
+  let lineOuter = outerEdge + 16;
+  let labelR = outerEdge + 34;
+
+  // In month mode, push month wheel outward to make room for day wheel
+  if (mode === "month") {
+    const bump = 64; // tune later
+    lineInner += bump;
+    lineOuter += bump;
+    labelR += bump;
+  }
+
 
   // Month boundaries in UTC
   const yearStart = Date.UTC(year, 0, 1, 0, 0, 0);
@@ -189,12 +251,20 @@ function updateCalendarOverlay(svg: SVGSVGElement, year: number, activeIds: stri
     line.setAttribute("y2", String(cy + lineOuter * Math.sin(a)));
     line.setAttribute("stroke", "rgba(255,255,255,0.22)");
     line.setAttribute("stroke-width", "2");
+
+    // ✅ important: boundary lines should never capture pointer events
+    line.setAttribute("pointer-events", "none");
+
     g.appendChild(line);
 
     // Optional: arced label around outer edge
     // We'll create a small arc path centered around the month midpoint.
     // Keep arcs short so the label doesn't wrap too far.
-    const arcSpanDeg = 20; // tweak
+
+    const mode = opts?.mode ?? "year";
+    const isActiveMonth = mode === "month" && opts?.selectedMonth === m;
+
+    const arcSpanDeg = isActiveMonth ? 34 : 20; // active month gets more space
     const startDeg = midAng - arcSpanDeg / 2;
     const endDeg = midAng + arcSpanDeg / 2;
 
@@ -208,13 +278,36 @@ function updateCalendarOverlay(svg: SVGSVGElement, year: number, activeIds: stri
       "d",
       `M ${start.x} ${start.y} A ${labelR} ${labelR} 0 0 1 ${end.x} ${end.y}`
     );
+
+    // ✅ critical: arc paths are layout-only, never interactive
+    path.setAttribute("pointer-events", "none");
+
     defs.appendChild(path);
 
     const text = document.createElementNS(NS, "text");
+
+    text.style.cursor = "pointer";
+    text.addEventListener("pointerenter", () => {
+      text.setAttribute("opacity", isActiveMonth ? "1" : "0.95");
+    });
+    text.addEventListener("pointerleave", () => {
+      text.setAttribute("opacity", "1");
+    });
+    text.addEventListener("click", (e) => {
+      e.stopPropagation();
+      opts?.onMonthClick?.(m);
+    });
+
+
     text.setAttribute("fill", "rgba(255,255,255,0.65)");
-    const fontSize = Math.max(22, Math.min(28, Math.round(labelR / 30)));
+
+    const baseFont = Math.max(22, Math.min(28, Math.round(labelR / 30)));
+    const fontSize = isActiveMonth ? Math.round(baseFont * 1.35) : baseFont;
+
     text.setAttribute("font-size", String(fontSize));
-    text.setAttribute("letter-spacing", "3");
+    text.setAttribute("letter-spacing", isActiveMonth ? "4.5" : "3");
+    text.setAttribute("fill", isActiveMonth ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.65)");
+
 
 
     const textPath = document.createElementNS(NS, "textPath");
@@ -223,15 +316,214 @@ function updateCalendarOverlay(svg: SVGSVGElement, year: number, activeIds: stri
     textPath.setAttribute("startOffset", "50%");
     textPath.setAttribute("text-anchor", "middle");
     textPath.textContent = monthNames[m];
-
     text.appendChild(textPath);
     g.appendChild(text);
+
+    // Make labels interactive
+    text.style.cursor = opts?.onMonthClick ? "pointer" : "default";
+    text.style.transition = "transform 120ms ease, opacity 120ms ease";
+    (text.style as any).transformBox = "fill-box";
+    (text.style as any).transformOrigin = "center";
+
+    text.addEventListener("pointerenter", () => {
+      text.style.transform = "scale(1.25)";
+      text.style.opacity = "1";
+    });
+    text.addEventListener("pointerleave", () => {
+      text.style.transform = "scale(1)";
+      text.style.opacity = "";
+    });
+
+    if (opts?.onMonthClick) {
+      text.addEventListener("click", (e) => {
+        e.stopPropagation();
+        opts.onMonthClick?.(m);
+      });
+    }
+
+
   }
 
   function polarToXY(cx0: number, cy0: number, rr: number, deg: number) {
     const rad = (deg * Math.PI) / 180;
     return { x: cx0 + rr * Math.cos(rad), y: cy0 + rr * Math.sin(rad) };
   }
+}
+
+function updateDayOverlay(
+  svg: SVGSVGElement,
+  year: number,
+  month: number,         // 0..11
+  activeIds: string[],
+  show: boolean
+) {
+  const NS = "http://www.w3.org/2000/svg";
+
+  const underlays =
+    (svg.querySelector("#Layer-Underlays") as SVGGElement | null) ?? svg;
+
+  let g = underlays.querySelector("#DayOverlay") as SVGGElement | null;
+  if (!g) {
+    g = document.createElementNS(NS, "g");
+    g.setAttribute("id", "DayOverlay");
+    underlays.appendChild(g);
+  }
+
+  g.style.display = show ? "" : "none";
+  if (!show) return;
+
+  // Clear
+  while (g.firstChild) g.removeChild(g.firstChild);
+
+  // Center
+  const cx = 600;
+  const cy = 600;
+
+  // Outer edge based on outermost ring (same method as month overlay)
+  const firstId = activeIds[0];
+  const base = firstId ? (svg.querySelector(`#${firstId}`) as SVGCircleElement | null) : null;
+  const rMid = base ? parseFloat(base.getAttribute("r") || "0") : 0;
+  const sw = base ? parseFloat(base.getAttribute("stroke-width") || "0") : 0;
+  const outerEdge = rMid + sw / 2;
+
+  // Day wheel sits BETWEEN rings and month labels (since month labels are bumped out)
+  const wheelR = outerEdge + 34; // tune later (should be < month labelR in month mode)
+
+  // Month boundaries in UTC
+  const tStart = Date.UTC(year, month, 1, 0, 0, 0);
+  const tEnd = Date.UTC(year, month + 1, 1, 0, 0, 0);
+  const span = tEnd - tStart;
+
+  // Days in month
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+
+  const defs = document.createElementNS(NS, "defs");
+  g.appendChild(defs);
+
+  // style knobs
+  const tickInner = wheelR - 10;
+  const tickOuter = wheelR + 10;
+  const labelR = wheelR + 18;
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const t0 = Date.UTC(year, month, d, 0, 0, 0);
+    const t1 = Date.UTC(year, month, d + 1, 0, 0, 0);
+
+    const frac = (t0 - tStart) / span;
+    const midFrac = ((t0 + t1) / 2 - tStart) / span;
+
+    const ang = frac * 360 - 90;
+    const midAng = midFrac * 360 - 90;
+
+    // Tick line (not interactive)
+    const line = document.createElementNS(NS, "line");
+    const a = (ang * Math.PI) / 180;
+    line.setAttribute("x1", String(cx + tickInner * Math.cos(a)));
+    line.setAttribute("y1", String(cy + tickInner * Math.sin(a)));
+    line.setAttribute("x2", String(cx + tickOuter * Math.cos(a)));
+    line.setAttribute("y2", String(cy + tickOuter * Math.sin(a)));
+    line.setAttribute("stroke", "rgba(255,255,255,0.18)");
+    line.setAttribute("stroke-width", "1");
+    line.setAttribute("pointer-events", "none");
+    g.appendChild(line);
+
+    // Label (small arced textPath)
+    const arcSpanDeg = 10; // tune
+    const startDeg = midAng - arcSpanDeg / 2;
+    const endDeg = midAng + arcSpanDeg / 2;
+
+    const start = polarToXY(cx, cy, labelR, startDeg);
+    const end = polarToXY(cx, cy, labelR, endDeg);
+
+    const path = document.createElementNS(NS, "path");
+    const pathId = `dayLabelPath-${year}-${month}-${d}`;
+    path.setAttribute("id", pathId);
+    path.setAttribute(
+      "d",
+      `M ${start.x} ${start.y} A ${labelR} ${labelR} 0 0 1 ${end.x} ${end.y}`
+    );
+    path.setAttribute("pointer-events", "none");
+    defs.appendChild(path);
+
+    const text = document.createElementNS(NS, "text");
+    text.setAttribute("fill", "rgba(255,255,255,0.55)");
+    text.setAttribute("font-size", "14");
+    text.setAttribute("letter-spacing", "1");
+    text.setAttribute("pointer-events", "none"); // for now (later we can click days)
+
+    const textPath = document.createElementNS(NS, "textPath");
+    textPath.setAttribute("href", `#${pathId}`);
+    textPath.setAttribute("startOffset", "50%");
+    textPath.setAttribute("text-anchor", "middle");
+    textPath.textContent = String(d);
+
+    text.appendChild(textPath);
+    g.appendChild(text);
+  }
+}
+
+
+function renderTodayMarker(
+  svg: SVGSVGElement,
+  angleDeg: number,
+  innerR: number,
+  outerR: number
+) {
+  const NS = "http://www.w3.org/2000/svg";
+  const g = ensureTodayLayer(svg);
+  g.innerHTML = "";
+
+  const cx = 600;
+  const cy = 600;
+
+  const a = (angleDeg * Math.PI) / 180;
+
+  const p0 = { x: cx + innerR * Math.cos(a), y: cy + innerR * Math.sin(a) };
+  const p1 = { x: cx + outerR * Math.cos(a), y: cy + outerR * Math.sin(a) };
+
+  // Thicker needle (tune)
+  const line = document.createElementNS(NS, "line");
+  line.setAttribute("x1", String(p0.x));
+  line.setAttribute("y1", String(p0.y));
+  line.setAttribute("x2", String(p1.x));
+  line.setAttribute("y2", String(p1.y));
+  line.setAttribute("stroke", "rgba(255,255,255,0.75)");
+  line.setAttribute("stroke-width", "3.5");
+  line.setAttribute("stroke-linecap", "round");
+  line.setAttribute("pointer-events", "none");
+  g.appendChild(line);
+
+  // Arrow tip (small triangle) at the outer end, pointing outward
+  const tipLen = 12;   // length of arrow
+  const tipWide = 10;  // width of arrow base
+
+  // Direction outward is angle a. Perpendicular is a +/- 90deg
+  const ux = Math.cos(a);
+  const uy = Math.sin(a);
+  const px = -uy;
+  const py = ux;
+
+  const tip = { x: p1.x + ux * tipLen, y: p1.y + uy * tipLen };
+  const left = { x: p1.x + px * (tipWide / 2), y: p1.y + py * (tipWide / 2) };
+  const right = { x: p1.x - px * (tipWide / 2), y: p1.y - py * (tipWide / 2) };
+
+  const tri = document.createElementNS(NS, "path");
+  tri.setAttribute(
+    "d",
+    `M ${left.x} ${left.y} L ${tip.x} ${tip.y} L ${right.x} ${right.y} Z`
+  );
+  tri.setAttribute("fill", "rgba(255,255,255,0.85)");
+  tri.setAttribute("pointer-events", "none");
+  g.appendChild(tri);
+
+  // Optional: a subtle dot at the outer edge (reads as “marker”)
+  const dot = document.createElementNS(NS, "circle");
+  dot.setAttribute("cx", String(p1.x));
+  dot.setAttribute("cy", String(p1.y));
+  dot.setAttribute("r", "3");
+  dot.setAttribute("fill", "rgba(255,255,255,0.9)");
+  dot.setAttribute("pointer-events", "none");
+  g.appendChild(dot);
 }
 
 
@@ -256,6 +548,8 @@ export default function MandalaClient({
   userReloadKey,
 
   userChart,
+  nav,
+  onNavigate,
 
 
 }: MandalaClientProps) {
@@ -276,6 +570,7 @@ export default function MandalaClient({
   const rangeEndRef = useRef<Date | null>(null);
   const timeViewRef = useRef<"calendar" | "tracker">("calendar");
   const anchorMsRef = useRef<number | null>(null);
+  const spanRef = useRef<"year" | "quarter" | "month" | "week">("year");
 
   const allIdsRef = useRef<string[]>([]);
 
@@ -531,11 +826,30 @@ export default function MandalaClient({
     }
   }
 
-  async function initYear(y: number, reset = false) {
+  async function initYear(
+    y: number,
+    reset = false,
+    opts?: {
+      view?: "calendar" | "tracker";
+      span?: "year" | "quarter" | "month" | "week";
+      q?: number;
+      m?: number;
+      anchorIso?: string;
+      backDays?: number;
+      forwardDays?: number;
+      startIso?: string;
+      endIso?: string;
+    }
+  ) {
     const svg = svgRef.current;
     if (!svg) return;
 
-    const payload = await fetchYearSegments(y, reset);
+    const payload = await fetchYearSegments(y, reset, {
+      view: nav?.view ?? "calendar",
+      span: nav?.span ?? "year",
+      m: typeof nav?.m === "number" ? nav.m : undefined,
+      q: typeof nav?.q === "number" ? nav.q : undefined,
+    });
 
     const yearText = svg.querySelector("#YearLabel tspan");
     if (yearText) yearText.textContent = String(payload.year);
@@ -546,6 +860,8 @@ export default function MandalaClient({
     rangeEndRef.current = new Date(payload.range_end_utc ?? payload.year_end_utc);
 
     timeViewRef.current = (payload.view === "tracker" ? "tracker" : "calendar");
+    spanRef.current = (payload as any).span ?? "year";
+
     anchorMsRef.current = payload.anchor_utc ? Date.parse(payload.anchor_utc) : null;
 
 
@@ -589,11 +905,34 @@ export default function MandalaClient({
 
     applyRingLayout(svg, activeIds, ringLayout);
     const isCalendarView = timeViewRef.current === "calendar";
-    updateCalendarOverlay(svg, year, activeIds, !!showCalendar && isCalendarView);
+    const canClickMonths = isCalendarView && spanRef.current === "year";
+
+    const mode =
+      nav?.span === "month" && typeof nav?.m === "number" ? "month" : "year";
+
+    updateCalendarOverlay(svg, year, activeIds, !!showCalendar && isCalendarView, {
+      mode,
+      selectedMonth: nav?.m,
+      onMonthClick: (m) => onNavigate?.({ view: "calendar", span: "month", m }),
+    });
+
+    // Day wheel only when month mode
+    updateDayOverlay(
+      svg,
+      year,
+      typeof nav?.m === "number" ? nav.m : new Date().getMonth(),
+      activeIds,
+      !!showCalendar && isCalendarView && mode === "month"
+    );
+
+
 
     rebuildActiveRings(svg, activeIds);
     applyVisibility(svg, allIds, vp);
     applySelectedClass(svg, selected ?? null);
+    // Render Today marker immediately after first build
+    updateVisibleOnly();
+
 
     // (optional debug)
     (window as any).transits = payload.transits;
@@ -603,6 +942,12 @@ export default function MandalaClient({
     (window as any).ANCHOR_UTC = payload.anchor_utc ?? null;
 
   }
+
+  function zoomToMonth(m: number) {
+    // month index 0..11
+    initYear(year, false, { view: "calendar", span: "month", m }).catch(console.warn);
+  }
+
 
   function rebuildOnly() {
     const svg = svgRef.current;
@@ -625,8 +970,54 @@ export default function MandalaClient({
 
     applyRingLayout(svg, activeIds, ringLayout);
     const isCalendarView = timeViewRef.current === "calendar";
-    updateCalendarOverlay(svg, year, activeIds, !!showCalendar && isCalendarView);
+    const canClickMonths = isCalendarView && spanRef.current === "year";
 
+    const mode =
+      nav?.span === "month" && typeof nav?.m === "number" ? "month" : "year";
+
+    updateCalendarOverlay(svg, year, activeIds, !!showCalendar && isCalendarView, {
+      mode,
+      selectedMonth: nav?.m,
+      onMonthClick: (m) => onNavigate?.({ view: "calendar", span: "month", m }),
+    });
+
+    // Day wheel only when month mode
+    updateDayOverlay(
+      svg,
+      year,
+      typeof nav?.m === "number" ? nav.m : new Date().getMonth(),
+      activeIds,
+      !!showCalendar && isCalendarView && mode === "month"
+    );
+
+
+    // ===== Today marker =====
+    const RS = rangeStartRef.current?.getTime();
+    const RE = rangeEndRef.current?.getTime();
+
+    if (RS && RE) {
+      const nowMs = Date.now();
+      const deg = timeToDeg(
+        nowMs,
+        RS,
+        RE,
+        timeViewRef.current,
+        anchorMsRef.current
+      );
+
+      // span from inner edge to outer edge of OUTERMOST active ring
+      const firstId = activeIds[0];
+      const base = firstId ? (svg.querySelector(`#${firstId}`) as SVGCircleElement | null) : null;
+      const rMid = base ? parseFloat(base.getAttribute("r") || "0") : 0;
+      const sw = base ? parseFloat(base.getAttribute("stroke-width") || "0") : 0;
+      const outerEdge = rMid + sw / 2;
+
+      // You can tune these two numbers for aesthetics
+      const inner = Math.max(0, outerEdge - 140);
+      const outer = outerEdge + 20;
+
+      renderTodayMarker(svg, deg, inner, outer);
+    }
 
     // Rebuild active rings (no fetch). This keeps labels correct and allows radius animations.
     rebuildActiveRings(svg, activeIds);
@@ -651,7 +1042,7 @@ export default function MandalaClient({
       });
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [year, yearReloadKey]);
+  }, [year, yearReloadKey, nav?.view, nav?.span, nav?.m, nav?.q]);
 
 
   useEffect(() => {
@@ -689,9 +1080,20 @@ export default function MandalaClient({
     if (!svg) return;
 
     const isCalendarView = timeViewRef.current === "calendar";
-    updateCalendarOverlay(svg, year, activeIdsRef.current, !!showCalendar && isCalendarView);
+    const canClickMonths = isCalendarView && spanRef.current === "year";
+    updateCalendarOverlay(svg, year, activeIdsRef.current, !!showCalendar && canClickMonths, {
+      onMonthClick: zoomToMonth,
+    });
 
   }, [showCalendar, year, ringLayout]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      updateVisibleOnly();
+    }, 60_000); // every minute
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   return null;

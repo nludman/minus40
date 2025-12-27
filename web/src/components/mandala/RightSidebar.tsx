@@ -1,14 +1,16 @@
 "use client";
 
-import type { HoverInfo as Info } from "@/lib/mandala/constants";
+import type { HoverInfo } from "@/lib/mandala/constants";
+
+type Info = Exclude<HoverInfo, null>;
 
 type Props = {
-  hovered: Info;
-  selected: Info;
+  hovered: HoverInfo;   // HoverInfo already includes null
+  selected: HoverInfo;  // HoverInfo already includes null
   clearSelected: () => void;
 };
 
-function findSegment(info: NonNullable<Info>) {
+function findSegment(info: Info) {
   if (typeof window === "undefined") return null;
   const transits = (window as any).transits;
   const list = transits?.[info.planet]?.segments;
@@ -20,12 +22,11 @@ function findSegment(info: NonNullable<Info>) {
   );
 }
 
-
-
 export default function RightSidebar({ hovered, selected, clearSelected }: Props) {
-  const info = selected ?? hovered;
-  const seg = info ? findSegment(info) : null;
+  const info: HoverInfo = selected ?? hovered;
 
+  // ✅ Hard guard so TS narrows info to Info (non-null)
+  const seg = info ? findSegment(info) : null;
 
   return (
     <div className="fixed right-4 top-4 z-50 w-[320px] rounded-2xl bg-black/60 p-4 text-white backdrop-blur border border-white/10">
@@ -79,16 +80,16 @@ export default function RightSidebar({ hovered, selected, clearSelected }: Props
                 Gate: <b>{info.gate}</b>
               </div>
 
-                {seg && (
-                  <div className="mt-2 text-xs opacity-80 space-y-1">
-                    <div>Start: {new Date(seg.start).toLocaleString()}</div>
-                    <div>End: {new Date(seg.end).toLocaleString()}</div>
-                  </div>
-                )}
+              {seg && (
+                <div className="mt-2 text-xs opacity-80 space-y-1">
+                  <div>Start: {new Date(seg.start).toLocaleString()}</div>
+                  <div>End: {new Date(seg.end).toLocaleString()}</div>
+                </div>
+              )}
 
               <div className="text-[11px] opacity-60">
                 (Next: add line, meaning, chart overlay matches)
-                //Year-clipped segment shown. Full gate span not yet displayed
+                {/* Year-clipped segment shown. Full gate span not yet displayed */}
               </div>
             </div>
           ) : (

@@ -1,21 +1,82 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+
 import { MandalaClient, ControlPanel, MandalaSvg, RightSidebar } from "@/components/mandala";
-import { useEffect } from "react";
 import UserChartPanel from "@/components/mandala/UserChartPanel";
-import { clearUserChart, loadUserChart, saveUserChart, type UserChartPayload } from "@/lib/userChartCache";
 import UserChartVisual from "@/components/mandala/UserChartVisual";
 
+import { clearUserChart, loadUserChart, saveUserChart, type UserChartPayload } from "@/lib/userChartCache";
+import type { HoverInfo } from "@/lib/mandala/constants";
 
 export default function Home() {
+  // =========================
+  // URL navigation state
+  // =========================
+  type NavState = {
+    view: "calendar" | "tracker";
+    span: "year" | "quarter" | "month" | "week";
+    m?: number; // 0..11 for month view
+  };
 
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const navFromUrl = useMemo<NavState>(() => {
+    const viewRaw = searchParams.get("view");
+    const spanRaw = searchParams.get("span");
+    const mRaw = searchParams.get("m");
+
+    const view: NavState["view"] = viewRaw === "tracker" ? "tracker" : "calendar";
+    const span: NavState["span"] =
+      spanRaw === "quarter" || spanRaw === "month" || spanRaw === "week" ? spanRaw : "year";
+
+    const mNum = mRaw != null ? Number(mRaw) : undefined;
+
+    return {
+      view,
+      span,
+      m: Number.isFinite(mNum) ? mNum : undefined,
+    };
+  }, [searchParams]);
+
+  const yearFromUrl = useMemo(() => {
+    const y = Number(searchParams.get("y"));
+    // default: current year if URL missing/invalid
+    return Number.isFinite(y) ? y : new Date().getFullYear();
+  }, [searchParams]);
+
+  const [year, setYear] = useState(yearFromUrl);
+  const [nav, setNav] = useState<NavState>(navFromUrl);
+
+  // keep local state in sync with back/forward navigation
+  useEffect(() => setYear(yearFromUrl), [yearFromUrl]);
+  useEffect(() => setNav(navFromUrl), [navFromUrl]);
+
+  function pushNav(nextYear: number, nextNav: NavState) {
+    const p = new URLSearchParams();
+    p.set("y", String(nextYear));
+    p.set("view", nextNav.view);
+    p.set("span", nextNav.span);
+
+    if (nextNav.span === "month" && typeof nextNav.m === "number") {
+      p.set("m", String(nextNav.m));
+    }
+
+    router.push(`/?${p.toString()}`);
+  }
+
+
+  // =========================
+  // UI state (NOT URL)
+  // =========================
   const [arcCap, setArcCap] = useState<"round" | "butt">("butt");
   const [gapPxRound, setGapPxRound] = useState(0.5);
   const [gapPxButt, setGapPxButt] = useState(0.35);
 
   const [showCalendar, setShowCalendar] = useState(true);
-  const [year, setYear] = useState(2026);
+
   const [visiblePlanets, setVisiblePlanets] = useState<Record<string, boolean>>({
     Moon: true,
     Sun: true,
@@ -39,12 +100,10 @@ export default function Home() {
   const [userChart, setUserChart] = useState<UserChartPayload | null>(null);
   const [isUserPanelOpen, setIsUserPanelOpen] = useState(true);
 
-
   useEffect(() => {
     // client-only (localStorage)
     setUserChart(loadUserChart());
   }, [userReloadKey]);
-
 
   const [ringLayout, setRingLayout] = useState<import("@/lib/mandala/ringLayout").RingLayoutKnobs>({
     centerR: 391.25,
@@ -54,23 +113,17 @@ export default function Home() {
     strokeMax: 44,
   });
 
-
-  const [hoverInfo, setHoverInfo] = useState<import("@/lib/mandala/constants").HoverInfo>(null);
-  const [selectedInfo, setSelectedInfo] = useState<import("@/lib/mandala/constants").HoverInfo>(null);
+  const [hoverInfo, setHoverInfo] = useState<HoverInfo>(null);
+  const [selectedInfo, setSelectedInfo] = useState<HoverInfo>(null);
 
   const INNER_PLANETS = ["Mercury", "Venus", "Mars"] as const;
   const OUTER_PLANETS = ["Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"] as const;
 
-  type PlanetId = keyof typeof visiblePlanets;
-
   const toggleGroup = (group: "Inner" | "Outer") => {
     const ids = group === "Inner" ? INNER_PLANETS : OUTER_PLANETS;
-
     setVisiblePlanets((prev) => {
-      // If ALL are currently ON, turn them OFF. Otherwise turn them ON.
       const allOn = ids.every((p) => prev[p] !== false);
       const nextOn = !allOn;
-
       const next = { ...prev };
       for (const p of ids) next[p] = nextOn;
       return next;
@@ -102,7 +155,7 @@ export default function Home() {
     setUserChart(null);
   };
 
-
+  // click background clears selection
   useEffect(() => {
     const svg = document.querySelector("#MandalaSvg");
     if (!(svg instanceof SVGSVGElement)) return;
@@ -113,9 +166,37 @@ export default function Home() {
     return () => svg.removeEventListener("click", onBgClick);
   }, []);
 
+  function normalizeNav(next: NavState): NavState {
+    // default month if needed
+    if (next.span === "month") {
+      const m = typeof next.m === "number" ? next.m : new Date().getMonth();
+      return { ...next, m: Math.max(0, Math.min(11, m)) };
+    }
+    // remove month when not in month span
+    const { m: _m, ...rest } = next;
+    return rest;
+  }
+
+  function commitNav(nextYear: number, nextNav: NavState) {
+    const normalized = normalizeNav(nextNav);
+    setNav(normalized);
+    pushNav(nextYear, normalized);
+  }
+
+  function handleNavigate(patch: Partial<NavState>) {
+    commitNav(year, { ...nav, ...patch });
+  }
+
+  function commitYear(nextYear: number) {
+    setYear(nextYear);
+    pushNav(nextYear, nav);
+  }
+
+
   return (
     <main className="min-h-screen grid place-items-center bg-zinc-950">
       <MandalaSvg />
+
       <MandalaClient
         year={year}
         yearReloadKey={yearReloadKey}
@@ -131,18 +212,17 @@ export default function Home() {
         showCalendar={showCalendar}
         userChart={userChart}
         gapPx={{ round: gapPxRound, butt: gapPxButt }}
-
-
+        nav={nav}
+        onNavigate={handleNavigate}
       />
 
       <div className="mt-6">
         <UserChartVisual userChart={userChart} />
       </div>
 
-
       <ControlPanel
         year={year}
-        setYear={setYear}
+        setYear={commitYear}
         resetYearCache={resetYearCache}
         resetUserCache={resetUserCache}
         visiblePlanets={visiblePlanetsStable}
@@ -159,8 +239,6 @@ export default function Home() {
         setGapPxRound={setGapPxRound}
         gapPxButt={gapPxButt}
         setGapPxButt={setGapPxButt}
-
-
       />
 
       <RightSidebar
@@ -176,7 +254,6 @@ export default function Home() {
         isOpen={isUserPanelOpen}
         onToggleOpen={() => setIsUserPanelOpen((v) => !v)}
       />
-
     </main>
   );
 }

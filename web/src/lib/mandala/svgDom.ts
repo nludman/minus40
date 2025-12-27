@@ -16,6 +16,17 @@ export function ensureLabelLayer(svg: SVGSVGElement): SVGGElement {
   return g;
 }
 
+export function ensureTodayLayer(svg: SVGSVGElement) {
+  const NS = "http://www.w3.org/2000/svg";
+  let g = svg.querySelector("#TodayMarker") as SVGGElement | null;
+  if (!g) {
+    g = document.createElementNS(NS, "g");
+    g.setAttribute("id", "TodayMarker");
+    // put it on top of rings; if you want it behind, use insertBefore like calendar overlay
+    svg.appendChild(g);
+  }
+  return g;
+}
 
 
 export function createGateLabel(textContent: string) {

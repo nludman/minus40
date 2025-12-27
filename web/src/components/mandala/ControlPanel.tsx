@@ -11,7 +11,7 @@ type Props = {
   visiblePlanets: Record<string, boolean>;
   togglePlanet: (planet: string) => void;
   toggleGroup: (group: "Inner" | "Outer") => void;
-  hoverInfo?: HoverInfo;
+  hoverInfo: HoverInfo | null;
   arcCap: "round" | "butt";
   setArcCap: (cap: "round" | "butt") => void;
   ringLayout: import("@/lib/mandala/ringLayout").RingLayoutKnobs;
