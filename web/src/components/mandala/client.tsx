@@ -154,6 +154,34 @@ function extractUserDefinedChannelKeys(userChart?: any): Set<string> {
   return out;
 }
 
+function wireYearLabelNav(
+  svg: SVGSVGElement,
+  onClick?: () => void
+) {
+  const el = svg.querySelector("#YearLabel") as SVGGElement | null;
+  if (!el) return () => { };
+
+  el.style.cursor = "pointer";
+  el.style.pointerEvents = "all";
+
+  const onEnter = () => el.classList.add("is-hovered");
+  const onLeave = () => el.classList.remove("is-hovered");
+  const onTap = (e: Event) => {
+    e.stopPropagation();
+    onClick?.();
+  };
+
+  el.addEventListener("pointerenter", onEnter);
+  el.addEventListener("pointerleave", onLeave);
+  el.addEventListener("click", onTap);
+
+  return () => {
+    el.removeEventListener("pointerenter", onEnter);
+    el.removeEventListener("pointerleave", onLeave);
+    el.removeEventListener("click", onTap);
+  };
+}
+
 
 function updateCalendarOverlay(
   svg: SVGSVGElement,
@@ -261,52 +289,83 @@ function updateCalendarOverlay(
     // We'll create a small arc path centered around the month midpoint.
     // Keep arcs short so the label doesn't wrap too far.
 
-    const mode = opts?.mode ?? "year";
     const isActiveMonth = mode === "month" && opts?.selectedMonth === m;
 
+    // Font sizing (computed BEFORE hit geometry so hit can track it)
+    const baseFont = Math.max(22, Math.min(28, Math.round(labelR / 30)));
+    const fontSize = isActiveMonth ? Math.round(baseFont * 1.35) : baseFont;
+
+    // Label arc span
     const arcSpanDeg = isActiveMonth ? 34 : 20; // active month gets more space
     const startDeg = midAng - arcSpanDeg / 2;
     const endDeg = midAng + arcSpanDeg / 2;
 
+    // ---- Visual label path (defs-only; used by textPath) ----
     const start = polarToXY(cx, cy, labelR, startDeg);
     const end = polarToXY(cx, cy, labelR, endDeg);
 
     const path = document.createElementNS(NS, "path");
     const pathId = `monthLabelPath-${year}-${m}`;
     path.setAttribute("id", pathId);
-    path.setAttribute(
-      "d",
-      `M ${start.x} ${start.y} A ${labelR} ${labelR} 0 0 1 ${end.x} ${end.y}`
-    );
+    path.setAttribute("d", `M ${start.x} ${start.y} A ${labelR} ${labelR} 0 0 1 ${end.x} ${end.y}`);
 
     // ✅ critical: arc paths are layout-only, never interactive
     path.setAttribute("pointer-events", "none");
-
     defs.appendChild(path);
+
+    // ---- Invisible hit arc (stable pointer target; centered on glyphs) ----
+    // Push hit radius slightly outward and scale stroke width with font size.
+    const hitR = labelR + fontSize * 0.4; // tune 0.25..0.55 (higher = more outward)
+    const hitW = Math.max(18, Math.round(fontSize * 1.45)); // tune 1.0..1.6
+
+    const hitStart = polarToXY(cx, cy, hitR, startDeg);
+    const hitEnd = polarToXY(cx, cy, hitR, endDeg);
+    const hitD = `M ${hitStart.x} ${hitStart.y} A ${hitR} ${hitR} 0 0 1 ${hitEnd.x} ${hitEnd.y}`;
+
+    const hit = document.createElementNS(NS, "path");
+    hit.setAttribute("d", hitD);
+    hit.setAttribute("fill", "none");
+    hit.setAttribute("stroke", "rgba(0,0,0,0.001)"); // invisible but hittable
+    hit.setAttribute("stroke-width", String(hitW));
+    hit.setAttribute("pointer-events", "stroke");
+    hit.style.cursor = opts?.onMonthClick ? "pointer" : "default";
+    g.appendChild(hit); // append to g (not defs) so it can receive events
+
+    if (opts?.onMonthClick) {
+      hit.style.cursor = "pointer";
+
+      hit.addEventListener("click", (e) => {
+        e.stopPropagation();
+        opts.onMonthClick?.(m);
+      });
+    } else {
+      hit.style.cursor = "default";
+    }
+
 
     const text = document.createElementNS(NS, "text");
 
-    text.style.cursor = "pointer";
-    text.addEventListener("pointerenter", () => {
-      text.setAttribute("opacity", isActiveMonth ? "1" : "0.95");
-    });
-    text.addEventListener("pointerleave", () => {
-      text.setAttribute("opacity", "1");
-    });
-    text.addEventListener("click", (e) => {
-      e.stopPropagation();
-      opts?.onMonthClick?.(m);
-    });
+    text.classList.add("month-label");
+    text.dataset.active = isActiveMonth ? "1" : "0";
 
 
-    text.setAttribute("fill", "rgba(255,255,255,0.65)");
 
-    const baseFont = Math.max(22, Math.min(28, Math.round(labelR / 30)));
-    const fontSize = isActiveMonth ? Math.round(baseFont * 1.35) : baseFont;
+    // Hover pulse ONLY for non-active months
+    if (!isActiveMonth) {
+      hit.addEventListener("pointerenter", () => text.classList.add("is-hovered"));
+      hit.addEventListener("pointerleave", () => text.classList.remove("is-hovered"));
+    } else {
+      text.classList.remove("is-hovered");
+    }
+
+
+
+
 
     text.setAttribute("font-size", String(fontSize));
     text.setAttribute("letter-spacing", isActiveMonth ? "4.5" : "3");
     text.setAttribute("fill", isActiveMonth ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.65)");
+    text.setAttribute("pointer-events", "none");
 
 
 
@@ -316,37 +375,10 @@ function updateCalendarOverlay(
     textPath.setAttribute("startOffset", "50%");
     textPath.setAttribute("text-anchor", "middle");
     textPath.textContent = monthNames[m];
+
     text.appendChild(textPath);
     g.appendChild(text);
 
-    // Make labels interactive
-    text.style.cursor = opts?.onMonthClick ? "pointer" : "default";
-    text.style.transition = "transform 120ms ease, opacity 120ms ease";
-    (text.style as any).transformBox = "fill-box";
-    (text.style as any).transformOrigin = "center";
-
-    text.addEventListener("pointerenter", () => {
-      text.style.transform = "scale(1.25)";
-      text.style.opacity = "1";
-    });
-    text.addEventListener("pointerleave", () => {
-      text.style.transform = "scale(1)";
-      text.style.opacity = "";
-    });
-
-    if (opts?.onMonthClick) {
-      text.addEventListener("click", (e) => {
-        e.stopPropagation();
-        opts.onMonthClick?.(m);
-      });
-    }
-
-
-  }
-
-  function polarToXY(cx0: number, cy0: number, rr: number, deg: number) {
-    const rad = (deg * Math.PI) / 180;
-    return { x: cx0 + rr * Math.cos(rad), y: cy0 + rr * Math.sin(rad) };
   }
 }
 
@@ -446,10 +478,11 @@ function updateDayOverlay(
     defs.appendChild(path);
 
     const text = document.createElementNS(NS, "text");
+    text.setAttribute("pointer-events", "all"); // for now (later we can click days)
     text.setAttribute("fill", "rgba(255,255,255,0.55)");
     text.setAttribute("font-size", "14");
     text.setAttribute("letter-spacing", "1");
-    text.setAttribute("pointer-events", "none"); // for now (later we can click days)
+
 
     const textPath = document.createElementNS(NS, "textPath");
     textPath.setAttribute("href", `#${pathId}`);
@@ -604,6 +637,12 @@ export default function MandalaClient({
     svgRef.current = svgEl;
     injectArcStyles();
 
+    const cleanupYearLabel = wireYearLabelNav(svgEl, () => {
+      // click year label -> go back to year span
+      onNavigate?.({ view: "calendar", span: "year", m: undefined });
+    });
+
+
     return () => {
       const svg = svgRef.current;
       if (!svg) return;
@@ -617,6 +656,8 @@ export default function MandalaClient({
       // clear labels, but don’t remove the layer node
       const labelLayer = svg.querySelector("#Layer-Labels") ?? svg.querySelector("#GateLabels");
       if (labelLayer instanceof SVGGElement) labelLayer.innerHTML = "";
+
+      cleanupYearLabel?.();
 
     };
   }, []);
