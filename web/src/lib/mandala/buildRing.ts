@@ -312,21 +312,30 @@ export function buildSegmentedRing({
       key: segKey,
     };
 
-    wrap.addEventListener("click", (e) => {
-      e.stopPropagation();
-      svg
-        .querySelectorAll(".seg-wrap.is-selected")
-        .forEach((el) => el.classList.remove("is-selected"));
-      wrap.classList.add("is-selected");
-      onSelect?.(hoverInfo);
-    });
 
     const appendArc = (d: string) => {
       const hit = makeArcPath(d, "seg-hit", "rgba(0,0,0,0.001)", swScaled + 16, arcCap);
       hit.setAttribute("pointer-events", "stroke");
 
-      hit.addEventListener("pointerenter", () => onHover?.(hoverInfo));
-      hit.addEventListener("pointerleave", () => onHover?.(null));
+      // Hover info MUST be on the interactive topmost element (hit)
+      hit.addEventListener("pointerenter", (e) => {
+        e.stopPropagation();
+        onHover?.(hoverInfo);
+      });
+      hit.addEventListener("pointerleave", (e) => {
+        e.stopPropagation();
+        onHover?.(null);
+      });
+
+      // Click: put it on hit as well (pointerenter/leave don’t bubble; keep everything consistent)
+      hit.addEventListener("click", (e) => {
+        e.stopPropagation();
+        svg
+          .querySelectorAll(".seg-wrap.is-selected")
+          .forEach((el) => el.classList.remove("is-selected"));
+        wrap.classList.add("is-selected");
+        onSelect?.(hoverInfo);
+      });
 
       const strokeColor = isMoonRound
         ? (seg as any).phase === "waxing"
@@ -340,27 +349,35 @@ export function buildSegmentedRing({
       const outlineW = isUserGate ? swScaled + OUTLINE_EXTRA + 10 : swScaled + OUTLINE_EXTRA;
 
       const outline = makeArcPath(d, "seg-outline", outlineStroke, outlineW, arcCap);
+      outline.setAttribute("pointer-events", "none"); // ✅ important
+
       const baseArc = makeArcPath(d, "seg-base", "#ffffff", swNow, arcCap);
+      baseArc.setAttribute("pointer-events", "none"); // ✅ important
 
       let channelFill: SVGPathElement | null = null;
       if (isUserChannel) {
         channelFill = makeArcPath(d, "seg-channel-fill", "rgba(255,80,80,0.85)", swNow, arcCap);
+        channelFill.setAttribute("pointer-events", "none"); // ✅ important
       }
 
       let tint: SVGPathElement | null = null;
       if (isUserGate && !isUserChannel) {
         tint = makeArcPath(d, "seg-usergate-tint", "rgba(255,80,80,0.10)", swNow, arcCap);
+        tint.setAttribute("pointer-events", "none"); // ✅ important
       }
 
       const colorArc = makeArcPath(d, "seg-color", finalColor, swNow, arcCap);
+      colorArc.setAttribute("pointer-events", "none"); // ✅ important
 
-      wrap.appendChild(hit);
+      // Append: hit first or last doesn’t matter now, because it’s the only interactive element
       wrap.appendChild(outline);
       wrap.appendChild(baseArc);
       if (channelFill) wrap.appendChild(channelFill);
       if (tint) wrap.appendChild(tint);
       wrap.appendChild(colorArc);
+      wrap.appendChild(hit); // ✅ keep hit on top for absolute certainty
     };
+
 
     // ✅ Draw arcs AFTER appendArc exists
     if (looksFullSpan) {

@@ -971,8 +971,9 @@ export default function MandalaClient({
     rebuildActiveRings(svg, activeIds);
     applyVisibility(svg, allIds, vp);
     applySelectedClass(svg, selected ?? null);
-    // Render Today marker immediately after first build
-    updateVisibleOnly();
+
+    // Render Today marker immediately (no rebuild)
+    updateTodayOnly();
 
 
     // (optional debug)
@@ -997,8 +998,33 @@ export default function MandalaClient({
     applySelectedClass(svg, selected ?? null);
   }
 
+  function updateTodayOnly() {
+    const svg = svgRef.current;
+    const transits = transitsRef.current;
+    if (!svg || !transits) return;
 
-  function updateVisibleOnly() {
+    const RS = rangeStartRef.current?.getTime();
+    const RE = rangeEndRef.current?.getTime();
+    if (!RS || !RE) return;
+
+    const nowMs = Date.now();
+    const deg = timeToDeg(nowMs, RS, RE, timeViewRef.current, anchorMsRef.current);
+
+    const activeIds = activeIdsRef.current;
+    const firstId = activeIds[0];
+    const base = firstId ? (svg.querySelector(`#${firstId}`) as SVGCircleElement | null) : null;
+    const rMid = base ? parseFloat(base.getAttribute("r") || "0") : 0;
+    const sw = base ? parseFloat(base.getAttribute("stroke-width") || "0") : 0;
+    const outerEdge = rMid + sw / 2;
+
+    const inner = Math.max(0, outerEdge - 140);
+    const outer = outerEdge + 20;
+
+    renderTodayMarker(svg, deg, inner, outer);
+  }
+
+
+  function updateVisibleOnly(opts?: { rebuild?: boolean }) {
     const svg = svgRef.current;
     const transits = transitsRef.current;
     if (!svg || !transits) return;
@@ -1008,10 +1034,9 @@ export default function MandalaClient({
     const activeIds = getActiveIds(allIds, vp);
     activeIdsRef.current = activeIds;
 
-
     applyRingLayout(svg, activeIds, ringLayout);
+
     const isCalendarView = timeViewRef.current === "calendar";
-    const canClickMonths = isCalendarView && spanRef.current === "year";
 
     const mode =
       nav?.span === "month" && typeof nav?.m === "number" ? "month" : "year";
@@ -1022,7 +1047,6 @@ export default function MandalaClient({
       onMonthClick: (m) => onNavigate?.({ view: "calendar", span: "month", m }),
     });
 
-    // Day wheel only when month mode
     updateDayOverlay(
       svg,
       year,
@@ -1031,44 +1055,20 @@ export default function MandalaClient({
       !!showCalendar && isCalendarView && mode === "month"
     );
 
+    // Always keep today marker up-to-date
+    updateTodayOnly();
 
-    // ===== Today marker =====
-    const RS = rangeStartRef.current?.getTime();
-    const RE = rangeEndRef.current?.getTime();
-
-    if (RS && RE) {
-      const nowMs = Date.now();
-      const deg = timeToDeg(
-        nowMs,
-        RS,
-        RE,
-        timeViewRef.current,
-        anchorMsRef.current
-      );
-
-      // span from inner edge to outer edge of OUTERMOST active ring
-      const firstId = activeIds[0];
-      const base = firstId ? (svg.querySelector(`#${firstId}`) as SVGCircleElement | null) : null;
-      const rMid = base ? parseFloat(base.getAttribute("r") || "0") : 0;
-      const sw = base ? parseFloat(base.getAttribute("stroke-width") || "0") : 0;
-      const outerEdge = rMid + sw / 2;
-
-      // You can tune these two numbers for aesthetics
-      const inner = Math.max(0, outerEdge - 140);
-      const outer = outerEdge + 20;
-
-      renderTodayMarker(svg, deg, inner, outer);
+    // Only rebuild segments/labels when needed
+    if (opts?.rebuild !== false) {
+      rebuildActiveRings(svg, activeIds);
     }
 
-    // Rebuild active rings (no fetch). This keeps labels correct and allows radius animations.
-    rebuildActiveRings(svg, activeIds);
     applyVisibility(svg, allIds, vp);
     applySelectedClass(svg, selected ?? null);
-
   }
 
   useEffect(() => {
-    updateVisibleOnly();
+    updateVisibleOnly(); // ringLayout changes require rebuilding segment paths
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ringLayout]);
 
@@ -1117,21 +1117,10 @@ export default function MandalaClient({
   }, [selected]);
 
   useEffect(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
-
-    const isCalendarView = timeViewRef.current === "calendar";
-    const canClickMonths = isCalendarView && spanRef.current === "year";
-    updateCalendarOverlay(svg, year, activeIdsRef.current, !!showCalendar && canClickMonths, {
-      onMonthClick: zoomToMonth,
-    });
-
-  }, [showCalendar, year, ringLayout]);
-
-  useEffect(() => {
     const id = window.setInterval(() => {
-      updateVisibleOnly();
-    }, 60_000); // every minute
+      updateTodayOnly();
+    }, 15_000);
+
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
