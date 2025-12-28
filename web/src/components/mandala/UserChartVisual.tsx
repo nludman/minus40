@@ -3,6 +3,7 @@
 
 import type { UserChartPayload } from "@/lib/userChartCache";
 import { useState } from "react";
+import BodygraphSvg from "@/components/bodygraph/BodygraphSvg";
 
 
 const DEFAULT_PLANET_ORDER = [
@@ -136,16 +137,13 @@ export default function UserChartVisual({ userChart }: { userChart: UserChartPay
                     </div>
                 </div>
 
-                {/* Center: Bodygraph placeholder */}
-                <div className="flex items-center justify-center p-6">
-                    <div className="w-full h-full rounded-2xl border border-dashed border-white/15 flex items-center justify-center">
-                        <div className="text-xs text-white/60 text-center leading-relaxed">
-                            Bodygraph SVG placeholder
-                            <br />
-                            (we’ll mount + animate your SVG here later)
-                        </div>
+                {/* Center: Bodygraph SVG */}
+                <div className="flex items-center justify-center p-4">
+                    <div className="w-full h-full rounded-2xl border border-white/10 bg-black/20 overflow-hidden flex items-center justify-center">
+                        <BodygraphSvg className="w-full h-full" style={{ maxWidth: 520, maxHeight: 520 }} />
                     </div>
                 </div>
+
 
                 {/* Right: Personality */}
                 <div className="border-l border-white/10">

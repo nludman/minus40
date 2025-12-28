@@ -11,6 +11,7 @@ import { clearUserChart, loadUserChart, saveUserChart, type UserChartPayload } f
 import type { HoverInfo } from "@/lib/mandala/constants";
 import TransitJournalViews from "@/components/mandala/TransitJournalViews";
 import AppSidebar from "@/components/shell/AppSidebar";
+import BodygraphSvg from "@/components/bodygraph/BodygraphSvg";
 
 
 

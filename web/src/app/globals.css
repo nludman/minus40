@@ -57,3 +57,19 @@ body {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.25) rgba(255, 255, 255, 0.05);
 }
+
+/* --- Bodygraph: treat Figma colors as placeholders (app owns styling) --- */
+#BodygraphSvg [fill]:not([fill="none"]) {
+  fill: rgba(255, 255, 255, 0.06) !important;
+}
+
+#BodygraphSvg [stroke]:not([stroke="none"]) {
+  stroke: rgba(255, 255, 255, 0.28) !important;
+}
+
+/* Keep gate circles available for activation styling later */
+#BodygraphSvg .gate circle,
+#BodygraphSvg [id^="Gate-"] circle {
+  fill: rgba(255, 255, 255, 0.08) !important;
+  stroke: rgba(255, 255, 255, 0.35) !important;
+}
