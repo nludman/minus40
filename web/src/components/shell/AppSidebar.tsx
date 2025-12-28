@@ -1,0 +1,90 @@
+// src/components/shell/AppSidebar.tsx
+
+// AppSidebar = navigation icon rail only.
+// It does NOT render Mandala controls or any app-page content.
+// sidebarExpanded only toggles an overlay owned by page.tsx.
+
+"use client";
+
+type AppPage = "transits" | "journal" | "trackers" | "account";
+
+function Icon({ label }: { label: string }) {
+    // simple placeholder icon
+    return (
+        <div className="h-6 w-6 rounded-md bg-white/10 border border-white/10 flex items-center justify-center text-[10px] text-white/70">
+            {label.slice(0, 1)}
+        </div>
+    );
+}
+
+export default function AppSidebar({
+    active,
+    onSelect,
+    isExpanded,
+    setExpanded,
+}: {
+    active: AppPage;
+    onSelect: (p: AppPage) => void;
+    isExpanded: boolean;
+    setExpanded: (v: boolean) => void;
+}) {
+    return (
+        <div className="h-screen w-[56px] bg-black/40 border-r border-white/10 flex flex-col items-center py-3">
+            <button
+                onClick={() => setExpanded(!isExpanded)}
+                className="h-9 w-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 text-xs"
+                title={isExpanded ? "Hide mandala controls" : "Show mandala controls"}
+            >
+                {isExpanded ? "⟨" : "⟩"}
+            </button>
+
+            <div className="mt-3 flex flex-col gap-2 w-full px-2">
+                <button
+                    onClick={() => onSelect("transits")}
+                    className={[
+                        "h-10 w-full rounded-xl border border-white/10 flex items-center justify-center",
+                        active === "transits" ? "bg-white/10" : "bg-white/5 hover:bg-white/10",
+                    ].join(" ")}
+                    title="Transits"
+                >
+                    <Icon label="Transits" />
+                </button>
+
+                <button
+                    onClick={() => onSelect("journal")}
+                    className={[
+                        "h-10 w-full rounded-xl border border-white/10 flex items-center justify-center",
+                        active === "journal" ? "bg-white/10" : "bg-white/5 hover:bg-white/10",
+                    ].join(" ")}
+                    title="Journal"
+                >
+                    <Icon label="Journal" />
+                </button>
+
+                <button
+                    onClick={() => onSelect("trackers")}
+                    className={[
+                        "h-10 w-full rounded-xl border border-white/10 flex items-center justify-center",
+                        active === "trackers" ? "bg-white/10" : "bg-white/5 hover:bg-white/10",
+                    ].join(" ")}
+                    title="Trackers"
+                >
+                    <Icon label="Trackers" />
+                </button>
+            </div>
+
+            <div className="mt-auto w-full px-2 pb-3">
+                <button
+                    onClick={() => onSelect("account")}
+                    className={[
+                        "h-10 w-full rounded-xl border border-white/10 flex items-center justify-center",
+                        active === "account" ? "bg-white/10" : "bg-white/5 hover:bg-white/10",
+                    ].join(" ")}
+                    title="Account"
+                >
+                    <Icon label="Account" />
+                </button>
+            </div>
+        </div>
+    );
+}

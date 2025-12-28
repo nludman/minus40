@@ -1,6 +1,9 @@
 // src/lib/mandala/constants.ts
 export const CX = 600;
 export const CY = 600;
+export const MANDALA_CENTER = { x: 600, y: 600 };
+export const MANDALA_VIEWBOX = { x: -120, y: -120, w: 1440, h: 1440 };
+
 
 export const BODY_ORDER = [
   "Moon",

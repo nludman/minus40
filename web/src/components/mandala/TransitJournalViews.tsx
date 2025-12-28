@@ -8,6 +8,7 @@ import { loadTransitJournal, type TransitJournalEntry } from "@/lib/transitJourn
 type Props = {
     reloadKey: number;
     selected?: HoverInfo | null;
+    variant?: "floating" | "embedded";
 };
 
 function fmtLocal(iso: string) {
@@ -18,7 +19,7 @@ function fmtLocal(iso: string) {
     }
 }
 
-export default function TransitJournalViews({ reloadKey }: Props) {
+export default function TransitJournalViews({ reloadKey, variant = "floating" }: Props) {
     const [tab, setTab] = useState<"journal" | "tracker">("journal");
     const [entries, setEntries] = useState<TransitJournalEntry[]>([]);
     const [page, setPage] = useState(0);
@@ -31,8 +32,17 @@ export default function TransitJournalViews({ reloadKey }: Props) {
     const pageCount = useMemo(() => Math.max(1, entries.length), [entries.length]);
     const active = entries[page] ?? null;
 
+    const isEmbedded = variant === "embedded";
+
     return (
-        <div className="fixed bottom-4 left-4 z-40 w-[560px] max-w-[calc(100vw-2rem)]">
+        <div
+            className={
+                isEmbedded
+                    ? "w-full max-w-[860px]"
+                    : "fixed bottom-4 left-4 z-40 w-[560px] max-w-[calc(100vw-2rem)]"
+            }
+        >
+
             <div className="rounded-2xl bg-black/50 backdrop-blur border border-white/10 shadow-xl overflow-hidden">
                 {/* Tabs */}
                 <div className="flex items-center gap-2 px-3 py-2 border-b border-white/10">

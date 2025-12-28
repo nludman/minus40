@@ -1,6 +1,6 @@
 "use client";
 
-import { BODY_ORDER, type HoverInfo } from "@/lib/mandala/constants";
+import { BODY_ORDER } from "@/lib/mandala/constants";
 import { useState } from "react";
 
 
@@ -11,7 +11,6 @@ type Props = {
   visiblePlanets: Record<string, boolean>;
   togglePlanet: (planet: string) => void;
   toggleGroup: (group: "Inner" | "Outer") => void;
-  hoverInfo: HoverInfo | null;
   arcCap: "round" | "butt";
   setArcCap: (cap: "round" | "butt") => void;
   ringLayout: import("@/lib/mandala/ringLayout").RingLayoutKnobs;
@@ -24,6 +23,7 @@ type Props = {
   setGapPxRound: (v: number) => void;
   gapPxButt: number;
   setGapPxButt: (v: number) => void;
+  variant?: "floating" | "embedded";
 
 
 };
@@ -37,7 +37,6 @@ export default function ControlPanel({
   visiblePlanets,
   togglePlanet,
   toggleGroup,
-  hoverInfo,
   arcCap,
   setArcCap,
   ringLayout,
@@ -48,6 +47,7 @@ export default function ControlPanel({
   setGapPxRound,
   gapPxButt,
   setGapPxButt,
+  variant = "floating",
 
 
 }: Props) {
@@ -60,24 +60,35 @@ export default function ControlPanel({
   const [openLayout, setOpenLayout] = useState(false);
   const [openHover, setOpenHover] = useState(true);
   const [openGaps, setOpenGaps] = useState(true); // for the new gap sliders block
+  const [layoutLabOpen, setLayoutLabOpen] = useState(true);
 
+
+
+  const isEmbedded = variant === "embedded";
 
   return (
     <div
       className={[
-        "fixed top-4 z-50 w-[260px] rounded-2xl bg-black/60 p-4 text-white backdrop-blur border border-white/10 transition-transform duration-200",
-        panelOpen ? "left-4 translate-x-0" : "left-0 -translate-x-[230px]",
+        isEmbedded
+          ? "w-full rounded-2xl bg-black/60 p-4 text-white backdrop-blur border border-white/10"
+          : [
+            "fixed top-4 z-50 w-[260px] rounded-2xl bg-black/60 p-4 text-white backdrop-blur border border-white/10 transition-transform duration-200",
+            panelOpen ? "left-4 translate-x-0" : "left-0 -translate-x-[230px]",
+          ].join(" "),
       ].join(" ")}
     >
       <div className="flex items-center justify-between">
         <div className="text-sm font-semibold tracking-wide">Mandala Controls</div>
-        <button
-          className="text-xs opacity-80 hover:opacity-100 rounded-lg bg-white/10 px-2 py-1"
-          onClick={() => setPanelOpen((v) => !v)}
-          title="Collapse panel"
-        >
-          {panelOpen ? "Hide" : "Show"}
-        </button>
+        {!isEmbedded ? (
+          <button
+            className="text-xs opacity-80 hover:opacity-100 rounded-lg bg-white/10 px-2 py-1"
+            onClick={() => setPanelOpen((v) => !v)}
+            title="Collapse panel"
+          >
+            {panelOpen ? "Hide" : "Show"}
+          </button>
+        ) : null}
+
 
       </div>
 
@@ -216,113 +227,112 @@ export default function ControlPanel({
 
 
       <div className="mt-4 rounded-xl bg-white/5 p-3">
-        <div className="text-xs opacity-70">Layout Lab</div>
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-white/70">Layout Lab</div>
+          <button
+            className="text-[11px] text-white/60 hover:text-white/80 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 px-2 py-1"
+            onClick={() => setLayoutLabOpen((v) => !v)}
+            title={layoutLabOpen ? "Hide Layout Lab" : "Show Layout Lab"}
+          >
+            {layoutLabOpen ? "Hide" : "Show"}
+          </button>
+        </div>
 
-        <div className="mt-3 space-y-3">
-          <div>
-            <div className="flex items-center justify-between text-[11px] opacity-70">
-              <span>Center radius</span>
-              <span>{Math.round(ringLayout.centerR ?? 391.25)}</span>
-            </div>
-            <input
-              type="range"
-              min={280}
-              max={460}
-              value={ringLayout.centerR ?? 391.25}
-              onChange={(e) =>
-                setRingLayout({ ...ringLayout, centerR: Number(e.target.value) })
-              }
-              className="w-full"
-            />
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between text-[11px] opacity-70">
-              <span>Band</span>
-              <span>{Math.round(ringLayout.band ?? 120)}</span>
-            </div>
-            <input
-              type="range"
-              min={60}
-              max={260}
-              value={ringLayout.band ?? 120}
-              onChange={(e) =>
-                setRingLayout({ ...ringLayout, band: Number(e.target.value) })
-              }
-              className="w-full"
-            />
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between text-[11px] opacity-70">
-              <span>Gap ratio</span>
-              <span>{(ringLayout.gapRatio ?? 0.35).toFixed(2)}</span>
-            </div>
-            <input
-              type="range"
-              min={0.1}
-              max={0.8}
-              step={0.01}
-              value={ringLayout.gapRatio ?? 0.35}
-              onChange={(e) =>
-                setRingLayout({ ...ringLayout, gapRatio: Number(e.target.value) })
-              }
-              className="w-full"
-            />
-          </div>
-          <div className="mt-4 rounded-xl bg-white/5 p-3">
-            <div className="text-xs opacity-70">Segment gaps</div>
-
+        {layoutLabOpen ? (
+          <>
             <div className="mt-3 space-y-3">
               <div>
                 <div className="flex items-center justify-between text-[11px] opacity-70">
-                  <span>Round gap (px/edge)</span>
-                  <span>{gapPxRound.toFixed(2)}</span>
+                  <span>Center radius</span>
+                  <span>{Math.round(ringLayout.centerR ?? 391.25)}</span>
                 </div>
                 <input
                   type="range"
-                  min={0}
-                  max={6}
-                  step={0.05}
-                  value={gapPxRound}
-                  onChange={(e) => setGapPxRound(Number(e.target.value))}
+                  min={280}
+                  max={460}
+                  value={ringLayout.centerR ?? 391.25}
+                  onChange={(e) =>
+                    setRingLayout({ ...ringLayout, centerR: Number(e.target.value) })
+                  }
                   className="w-full"
                 />
               </div>
 
               <div>
                 <div className="flex items-center justify-between text-[11px] opacity-70">
-                  <span>Butt gap (px/edge)</span>
-                  <span>{gapPxButt.toFixed(2)}</span>
+                  <span>Band</span>
+                  <span>{Math.round(ringLayout.band ?? 120)}</span>
                 </div>
                 <input
                   type="range"
-                  min={0}
-                  max={1.5}
-                  step={0.05}
-                  value={gapPxButt}
-                  onChange={(e) => setGapPxButt(Number(e.target.value))}
+                  min={60}
+                  max={260}
+                  value={ringLayout.band ?? 120}
+                  onChange={(e) =>
+                    setRingLayout({ ...ringLayout, band: Number(e.target.value) })
+                  }
                   className="w-full"
                 />
               </div>
+
+              <div>
+                <div className="flex items-center justify-between text-[11px] opacity-70">
+                  <span>Gap ratio</span>
+                  <span>{(ringLayout.gapRatio ?? 0.35).toFixed(2)}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.1}
+                  max={0.8}
+                  step={0.01}
+                  value={ringLayout.gapRatio ?? 0.35}
+                  onChange={(e) =>
+                    setRingLayout({ ...ringLayout, gapRatio: Number(e.target.value) })
+                  }
+                  className="w-full"
+                />
+              </div>
+              <div className="mt-4 rounded-xl bg-white/5 p-3">
+                <div className="text-xs opacity-70">Segment gaps</div>
+
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <div className="flex items-center justify-between text-[11px] opacity-70">
+                      <span>Round gap (px/edge)</span>
+                      <span>{gapPxRound.toFixed(2)}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={6}
+                      step={0.05}
+                      value={gapPxRound}
+                      onChange={(e) => setGapPxRound(Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between text-[11px] opacity-70">
+                      <span>Butt gap (px/edge)</span>
+                      <span>{gapPxButt.toFixed(2)}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1.5}
+                      step={0.05}
+                      value={gapPxButt}
+                      onChange={(e) => setGapPxButt(Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              </div>
+
             </div>
-          </div>
-
-        </div>
-      </div>
-
-
-      <div className="mt-4 rounded-xl bg-white/5 p-3">
-        <div className="text-xs opacity-70">Hover</div>
-        <div className="mt-1 text-sm">
-          {hoverInfo ? (
-            <span>
-              {hoverInfo.planet} — Gate <b>{hoverInfo.gate}</b>
-            </span>
-          ) : (
-            <span className="opacity-60">Hover a segment</span>
-          )}
-        </div>
+          </>
+        ) : null}
       </div>
     </div>
   );

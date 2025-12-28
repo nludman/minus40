@@ -10,9 +10,17 @@ import UserChartVisual from "@/components/mandala/UserChartVisual";
 import { clearUserChart, loadUserChart, saveUserChart, type UserChartPayload } from "@/lib/userChartCache";
 import type { HoverInfo } from "@/lib/mandala/constants";
 import TransitJournalViews from "@/components/mandala/TransitJournalViews";
+import AppSidebar from "@/components/shell/AppSidebar";
+
 
 
 export default function Home() {
+
+  type AppPage = "transits" | "journal" | "trackers" | "account";
+  const [appPage, setAppPage] = useState<AppPage>("transits");
+  const [sidebarExpanded, setSidebarExpanded] = useState(true);
+
+
   // =========================
   // URL navigation state
   // =========================
@@ -198,77 +206,143 @@ export default function Home() {
 
 
   return (
-    <main className="min-h-screen grid place-items-center bg-zinc-950">
-      <MandalaSvg />
+    <div className="min-h-screen bg-black text-white">
+      <div className="flex">
+        {/* Left shell */}
+        <div className="w-[56px] shrink-0">
+          <AppSidebar
+            active={appPage}
+            onSelect={(p) => {
+              setAppPage(p);
+              // auto-expand when entering Transits (per your request)
+              if (p === "transits") setSidebarExpanded(true);
+            }}
+            isExpanded={sidebarExpanded}
+            setExpanded={setSidebarExpanded}
+          />
+        </div>
 
-      <MandalaClient
-        year={year}
-        yearReloadKey={yearReloadKey}
-        yearReloadMode={yearReloadMode}
-        onYearReloadConsumed={() => setYearReloadMode("normal")}
-        userReloadKey={userReloadKey}
-        visiblePlanets={visiblePlanetsStable}
-        ringLayout={ringLayout}
-        onHover={setHoverInfo}
-        onSelect={setSelectedInfo}
-        selected={selectedInfo}
-        arcCap={arcCap}
-        showCalendar={showCalendar}
-        userChart={userChart}
-        gapPx={{ round: gapPxRound, butt: gapPxButt }}
-        nav={nav}
-        onNavigate={handleNavigate}
-      />
+        {/* Main area */}
+        <div className="flex-1 relative min-h-screen">
+          {/* If Transits: render mandala + side controls */}
+          {appPage === "transits" ? (
+            <>
+              {/* Middle scroll column */}
+              <div className="h-screen overflow-y-auto">
+                <div className="pt-6 pb-24 flex flex-col items-center">
+                  <MandalaSvg />
+                  <MandalaClient
+                    year={year}
+                    visiblePlanets={visiblePlanets}
+                    onHover={setHoverInfo}
+                    onSelect={setSelectedInfo}
+                    selected={selectedInfo}
+                    arcCap={arcCap}
+                    ringLayout={ringLayout}
+                    showCalendar={showCalendar}
+                    userChart={userChart}
+                    gapPx={{ round: gapPxRound, butt: gapPxButt }}
+                    nav={nav}
+                    onNavigate={handleNavigate}
+                    yearReloadKey={yearReloadKey}
+                    yearReloadMode={yearReloadMode}
+                    onYearReloadConsumed={() => setYearReloadMode("normal")}
+                  />
 
-      <div className="mt-6">
-        <UserChartVisual userChart={userChart} />
+                  {/* Bodygraph goes BELOW mandala (scrolls with column) */}
+                  <div className="mt-8 w-full flex justify-center">
+                    <div className="w-[860px] max-w-[calc(100vw-2rem)]">
+                      <UserChartVisual userChart={userChart} />
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Keep these as overlays (can stay fixed) */}
+              <RightSidebar
+                hovered={hoverInfo}
+                selected={selectedInfo}
+                clearSelected={() => setSelectedInfo(null)}
+              />
+
+              <UserChartPanel
+                userChart={userChart}
+                onUserChartUploaded={onUserChartUploaded}
+                onResetUserCache={resetUserCache}
+                isOpen={isUserPanelOpen}
+                onToggleOpen={() => setIsUserPanelOpen((v) => !v)}
+                year={year}
+                selected={selectedInfo}
+                onJournalSaved={() => setJournalReloadKey((k) => k + 1)}
+              />
+
+              {/* Mandala controls overlay (fixed; must NEVER affect layout flow) */}
+
+              {sidebarExpanded ? (
+                <div className="fixed left-[56px] top-0 h-screen w-[340px] bg-black/30 border-r border-white/10 p-3 overflow-auto z-40">
+                  <div className="text-xs text-white/60 px-2 pb-2">Mandala Controls</div>
+
+                  <ControlPanel
+                    variant="embedded"
+                    year={year}
+                    setYear={(y) => {
+                      setYear(y);
+                      pushNav(y, nav);
+                    }}
+                    visiblePlanets={visiblePlanets}
+                    togglePlanet={togglePlanet}
+                    toggleGroup={toggleGroup}
+                    arcCap={arcCap}
+                    setArcCap={setArcCap}
+                    ringLayout={ringLayout}
+                    setRingLayout={setRingLayout}
+                    showCalendar={showCalendar}
+                    setShowCalendar={setShowCalendar}
+                    resetYearCache={() => {
+                      setYearReloadMode("reset");
+                      setYearReloadKey((k) => k + 1);
+                    }}
+                    resetUserCache={() => {
+                      clearUserChart();
+                      setUserChart(null);
+                    }}
+                    gapPxRound={gapPxRound}
+                    setGapPxRound={setGapPxRound}
+                    gapPxButt={gapPxButt}
+                    setGapPxButt={setGapPxButt}
+                  />
+                </div>
+              ) : null}
+            </>
+          ) : null}
+
+          {/* Journal page */}
+          {appPage === "journal" ? (
+            <div className="p-6">
+              <div className="text-xl font-semibold mb-4">Journal</div>
+              <TransitJournalViews reloadKey={journalReloadKey} variant="embedded" />
+            </div>
+          ) : null}
+
+          {/* Trackers page */}
+          {appPage === "trackers" ? (
+            <div className="p-6">
+              <div className="text-xl font-semibold mb-2">Trackers</div>
+              <div className="text-white/60">(Placeholder — your custom mix rings will live here.)</div>
+            </div>
+          ) : null}
+
+          {/* Account page */}
+          {appPage === "account" ? (
+            <div className="p-6">
+              <div className="text-xl font-semibold mb-2">Account</div>
+              <div className="text-white/60">(Placeholder.)</div>
+            </div>
+          ) : null}
+        </div>
       </div>
-
-      <ControlPanel
-        year={year}
-        setYear={commitYear}
-        resetYearCache={resetYearCache}
-        resetUserCache={resetUserCache}
-        visiblePlanets={visiblePlanetsStable}
-        togglePlanet={togglePlanet}
-        toggleGroup={toggleGroup}
-        hoverInfo={hoverInfo}
-        arcCap={arcCap}
-        setArcCap={setArcCap}
-        ringLayout={ringLayout}
-        setRingLayout={setRingLayout}
-        showCalendar={showCalendar}
-        setShowCalendar={setShowCalendar}
-        gapPxRound={gapPxRound}
-        setGapPxRound={setGapPxRound}
-        gapPxButt={gapPxButt}
-        setGapPxButt={setGapPxButt}
-      />
-
-      <RightSidebar
-        hovered={hoverInfo}
-        selected={selectedInfo}
-        clearSelected={() => setSelectedInfo(null)}
-      />
-
-      <UserChartPanel
-        userChart={userChart}
-        onUserChartUploaded={onUserChartUploaded}
-        onResetUserCache={resetUserCache}
-        isOpen={isUserPanelOpen}
-        onToggleOpen={() => setIsUserPanelOpen((v) => !v)}
-
-        year={year}
-        selected={selectedInfo}
-        onJournalSaved={() => setJournalReloadKey((k) => k + 1)}
-      />
-
-
-      <TransitJournalViews
-        reloadKey={journalReloadKey}
-        selected={selectedInfo}
-      />
-
-    </main>
+    </div>
   );
+
 }

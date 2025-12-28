@@ -1116,6 +1116,16 @@ export default function MandalaClient({
     applySelectedClass(svg, selected ?? null);
   }, [selected]);
 
+
+  // ============================================================
+  // REAL-TIME UPDATE (INTENTIONAL)
+  // This interval MUST stay cheap.
+  // - No rebuilds
+  // - No relayout
+  // - No overlays
+  // - Today marker ONLY
+  // ============================================================
+
   useEffect(() => {
     const id = window.setInterval(() => {
       updateTodayOnly();
