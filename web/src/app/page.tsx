@@ -207,7 +207,7 @@ export default function Home() {
 
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen">
       <div className="flex">
         {/* Left shell */}
         <div className="w-[56px] shrink-0">

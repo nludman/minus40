@@ -18,9 +18,8 @@ import { buildSegmentedRing } from "@/lib/mandala/buildRing";
 import { animateRingIn, animateRingMove } from "@/lib/mandala/animations";
 import type { UserChartPayload } from "@/lib/userChartCache";
 import { ensureTodayLayer } from "@/lib/mandala/svgDom";
-import { clamp01 } from "@/lib/mandala/geometry";
 import { polarToXY } from "@/lib/mandala/geometry";
-
+import { updateTodayOnly } from "@/lib/mandala/todayMarker";
 
 
 type MandalaClientProps = {
@@ -55,29 +54,6 @@ type MandalaClientProps = {
   }) => void;
 
 };
-
-function timeToDeg(
-  tMs: number,
-  rangeStartMs: number,
-  rangeEndMs: number,
-  view: "calendar" | "tracker",
-  anchorMs?: number | null
-) {
-  const total = rangeEndMs - rangeStartMs;
-  if (total <= 0) return -90;
-
-  if (view === "tracker") {
-    if (!anchorMs) {
-      const frac = (tMs - rangeStartMs) / total;
-      return clamp01(frac) * 360 - 90;
-    }
-    const offset = (tMs - anchorMs) / total;
-    return 90 - offset * 360;
-  }
-
-  const frac = (tMs - rangeStartMs) / total;
-  return clamp01(frac) * 360 - 90;
-}
 
 
 function extractUserGates(userChart?: any): Set<number> {
@@ -496,68 +472,7 @@ function updateDayOverlay(
 }
 
 
-function renderTodayMarker(
-  svg: SVGSVGElement,
-  angleDeg: number,
-  innerR: number,
-  outerR: number
-) {
-  const NS = "http://www.w3.org/2000/svg";
-  const g = ensureTodayLayer(svg);
-  g.innerHTML = "";
 
-  const cx = 600;
-  const cy = 600;
-
-  const a = (angleDeg * Math.PI) / 180;
-
-  const p0 = { x: cx + innerR * Math.cos(a), y: cy + innerR * Math.sin(a) };
-  const p1 = { x: cx + outerR * Math.cos(a), y: cy + outerR * Math.sin(a) };
-
-  // Thicker needle (tune)
-  const line = document.createElementNS(NS, "line");
-  line.setAttribute("x1", String(p0.x));
-  line.setAttribute("y1", String(p0.y));
-  line.setAttribute("x2", String(p1.x));
-  line.setAttribute("y2", String(p1.y));
-  line.setAttribute("stroke", "rgba(255,255,255,0.75)");
-  line.setAttribute("stroke-width", "3.5");
-  line.setAttribute("stroke-linecap", "round");
-  line.setAttribute("pointer-events", "none");
-  g.appendChild(line);
-
-  // Arrow tip (small triangle) at the outer end, pointing outward
-  const tipLen = 12;   // length of arrow
-  const tipWide = 10;  // width of arrow base
-
-  // Direction outward is angle a. Perpendicular is a +/- 90deg
-  const ux = Math.cos(a);
-  const uy = Math.sin(a);
-  const px = -uy;
-  const py = ux;
-
-  const tip = { x: p1.x + ux * tipLen, y: p1.y + uy * tipLen };
-  const left = { x: p1.x + px * (tipWide / 2), y: p1.y + py * (tipWide / 2) };
-  const right = { x: p1.x - px * (tipWide / 2), y: p1.y - py * (tipWide / 2) };
-
-  const tri = document.createElementNS(NS, "path");
-  tri.setAttribute(
-    "d",
-    `M ${left.x} ${left.y} L ${tip.x} ${tip.y} L ${right.x} ${right.y} Z`
-  );
-  tri.setAttribute("fill", "rgba(255,255,255,0.85)");
-  tri.setAttribute("pointer-events", "none");
-  g.appendChild(tri);
-
-  // Optional: a subtle dot at the outer edge (reads as “marker”)
-  const dot = document.createElementNS(NS, "circle");
-  dot.setAttribute("cx", String(p1.x));
-  dot.setAttribute("cy", String(p1.y));
-  dot.setAttribute("r", "3");
-  dot.setAttribute("fill", "rgba(255,255,255,0.9)");
-  dot.setAttribute("pointer-events", "none");
-  g.appendChild(dot);
-}
 
 
 
@@ -973,7 +888,17 @@ export default function MandalaClient({
     applySelectedClass(svg, selected ?? null);
 
     // Render Today marker immediately (no rebuild)
-    updateTodayOnly();
+    updateTodayOnly({
+      svg: svgRef.current,
+      transits: transitsRef.current,
+      rangeStartMs: rangeStartRef.current?.getTime() ?? null,
+      rangeEndMs: rangeEndRef.current?.getTime() ?? null,
+      view: timeViewRef.current,
+      anchorMs: anchorMsRef.current,
+      activeIds: activeIdsRef.current,
+      ensureTodayLayer,
+    });
+
 
 
     // (optional debug)
@@ -996,31 +921,6 @@ export default function MandalaClient({
     if (!svg) return;
     rebuildActiveRings(svg, activeIdsRef.current);
     applySelectedClass(svg, selected ?? null);
-  }
-
-  function updateTodayOnly() {
-    const svg = svgRef.current;
-    const transits = transitsRef.current;
-    if (!svg || !transits) return;
-
-    const RS = rangeStartRef.current?.getTime();
-    const RE = rangeEndRef.current?.getTime();
-    if (!RS || !RE) return;
-
-    const nowMs = Date.now();
-    const deg = timeToDeg(nowMs, RS, RE, timeViewRef.current, anchorMsRef.current);
-
-    const activeIds = activeIdsRef.current;
-    const firstId = activeIds[0];
-    const base = firstId ? (svg.querySelector(`#${firstId}`) as SVGCircleElement | null) : null;
-    const rMid = base ? parseFloat(base.getAttribute("r") || "0") : 0;
-    const sw = base ? parseFloat(base.getAttribute("stroke-width") || "0") : 0;
-    const outerEdge = rMid + sw / 2;
-
-    const inner = Math.max(0, outerEdge - 140);
-    const outer = outerEdge + 20;
-
-    renderTodayMarker(svg, deg, inner, outer);
   }
 
 
@@ -1056,7 +956,17 @@ export default function MandalaClient({
     );
 
     // Always keep today marker up-to-date
-    updateTodayOnly();
+    updateTodayOnly({
+      svg: svgRef.current,
+      transits: transitsRef.current,
+      rangeStartMs: rangeStartRef.current?.getTime() ?? null,
+      rangeEndMs: rangeEndRef.current?.getTime() ?? null,
+      view: timeViewRef.current,
+      anchorMs: anchorMsRef.current,
+      activeIds: activeIdsRef.current,
+      ensureTodayLayer,
+    });
+
 
     // Only rebuild segments/labels when needed
     if (opts?.rebuild !== false) {
@@ -1066,6 +976,7 @@ export default function MandalaClient({
     applyVisibility(svg, allIds, vp);
     applySelectedClass(svg, selected ?? null);
   }
+
 
   useEffect(() => {
     updateVisibleOnly(); // ringLayout changes require rebuilding segment paths
@@ -1128,7 +1039,17 @@ export default function MandalaClient({
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      updateTodayOnly();
+      updateTodayOnly({
+        svg: svgRef.current,
+        transits: transitsRef.current,
+        rangeStartMs: rangeStartRef.current?.getTime() ?? null,
+        rangeEndMs: rangeEndRef.current?.getTime() ?? null,
+        view: timeViewRef.current,
+        anchorMs: anchorMsRef.current,
+        activeIds: activeIdsRef.current,
+        ensureTodayLayer,
+      });
+
     }, 15_000);
 
     return () => window.clearInterval(id);

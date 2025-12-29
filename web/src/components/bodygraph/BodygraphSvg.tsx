@@ -22,133 +22,133 @@ export default function BodygraphSvg({ className, style }: Props) {
 
             <g id="Bodygraph">
                 <g id="BodyFrame">
-                    <path id="Body-shape" d="M195.178 350.5C263.178 336 259.177 276.057 256.677 276C254.177 275.943 227.765 278.292 222.177 270C216.677 264 218.03 213.74 218.177 211.5C218.39 208.279 206.677 210.5 205.677 206.5C204.177 189.5 219.677 174.648 219.677 167C219.677 74 272.177 57 327.177 57C425.677 57 461.677 138 406.677 240.5C373.945 301.5 406.177 337.422 466.177 353.5C470.2 354.578 500.677 366.5 511.677 389.5C521.813 410.693 597.177 573 639.177 672C646.177 688.5 646.471 711.204 643.677 723.5C623.677 811.5 481.677 924 326.177 924C199.177 924 33.8132 829.5 5.17701 724.5C2.17702 713.5 5.17726 688.172 11.177 672C41.7848 589.5 138.646 386 150.178 372.5C162.678 357.866 182.358 353.234 195.178 350.5Z" fill="#2F2E2F" stroke="#373737" stroke-width="8" stroke-linecap="round" />
+                    <path id="Body-shape" d="M195.178 350.5C263.178 336 259.177 276.057 256.677 276C254.177 275.943 227.765 278.292 222.177 270C216.677 264 218.03 213.74 218.177 211.5C218.39 208.279 206.677 210.5 205.677 206.5C204.177 189.5 219.677 174.648 219.677 167C219.677 74 272.177 57 327.177 57C425.677 57 461.677 138 406.677 240.5C373.945 301.5 406.177 337.422 466.177 353.5C470.2 354.578 500.677 366.5 511.677 389.5C521.813 410.693 597.177 573 639.177 672C646.177 688.5 646.471 711.204 643.677 723.5C623.677 811.5 481.677 924 326.177 924C199.177 924 33.8132 829.5 5.17701 724.5C2.17702 713.5 5.17726 688.172 11.177 672C41.7848 589.5 138.646 386 150.178 372.5C162.678 357.866 182.358 353.234 195.178 350.5Z" fill="#2F2E2F" stroke="#373737" strokeWidth="8" strokeLinecap="round" />
                 </g>
                 <g id="Channels">
                     <g id="Channel-35-36">
-                        <path id="35-36-path" d="M378 333C451.639 369.289 540.823 492.129 558 623" stroke="#393939" stroke-width="8" />
+                        <path id="35-36-path" d="M378 333C451.639 369.289 540.823 492.129 558 623" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-16-48">
-                        <path id="16-48-path" d="M274 333C199.953 369.415 110.273 492.678 93.0001 624" stroke="#393939" stroke-width="8" />
+                        <path id="16-48-path" d="M274 333C199.953 369.415 110.273 492.678 93.0001 624" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-20-57">
-                        <path id="20-57-path" d="M274 359C208.953 393.788 130.174 511.544 115 637" stroke="#393939" stroke-width="8" />
+                        <path id="20-57-path" d="M274 359C208.953 393.788 130.174 511.544 115 637" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-12-22">
-                        <path id="12-22-path" d="M378 359C443.047 394.288 521.827 513.739 537 641" stroke="#393939" stroke-width="8" />
+                        <path id="12-22-path" d="M378 359C443.047 394.288 521.827 513.739 537 641" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-30-41">
-                        <path id="30-41-path" d="M549 749C527.727 798.911 455.718 859.357 379 871" stroke="#393939" stroke-width="8" />
+                        <path id="30-41-path" d="M549 749C527.727 798.911 455.718 859.357 379 871" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-18-58">
-                        <path id="18-58-path" d="M103 749C124.398 798.911 196.831 859.357 274 871" stroke="#393939" stroke-width="8" />
+                        <path id="18-58-path" d="M103 749C124.398 798.911 196.831 859.357 274 871" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-28-38">
-                        <path id="28-38-path" d="M120 739C139.271 784.001 204.503 838.503 274 849" stroke="#393939" stroke-width="8" />
+                        <path id="28-38-path" d="M120 739C139.271 784.001 204.503 838.503 274 849" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-39-55">
-                        <path id="39-55-path" d="M531 738C511.979 783.41 447.595 838.407 379 849" stroke="#393939" stroke-width="8" />
+                        <path id="39-55-path" d="M531 738C511.979 783.41 447.595 838.407 379 849" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-19-49">
-                        <path id="19-49-path" d="M512 727C495.357 768.728 439.02 819.266 379 829" stroke="#393939" stroke-width="8" />
+                        <path id="19-49-path" d="M512 727C495.357 768.728 439.02 819.266 379 829" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-32-54">
-                        <path id="32-54-path" d="M138 727C155.019 768.728 212.626 819.266 274 829" stroke="#393939" stroke-width="8" />
+                        <path id="32-54-path" d="M138 727C155.019 768.728 212.626 819.266 274 829" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-25-51">
-                        <path id="25-51-path" d="M391 509C408.302 528.539 405.512 540.685 415 556" stroke="#393939" stroke-width="8" />
+                        <path id="25-51-path" d="M391 509C408.302 528.539 405.512 540.685 415 556" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-47-64">
-                        <path id="47-64-path" d="M308 127V151" stroke="#393939" stroke-width="8" />
+                        <path id="47-64-path" d="M308 127V151" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-24-61">
-                        <path id="24-61-path" d="M326 127V151" stroke="#393939" stroke-width="8" />
+                        <path id="24-61-path" d="M326 127V151" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-4-63">
-                        <path id="4-63-path" d="M344 127V151" stroke="#393939" stroke-width="8" />
+                        <path id="4-63-path" d="M344 127V151" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-42-53">
-                        <path id="42-53-path" d="M308 771V800" stroke="#393939" stroke-width="8" />
+                        <path id="42-53-path" d="M308 771V800" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-3-60">
-                        <path id="3-60-path" d="M326 771V800" stroke="#393939" stroke-width="8" />
+                        <path id="3-60-path" d="M326 771V800" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-9-52">
-                        <path id="9-52-path" d="M344 771V800" stroke="#393939" stroke-width="8" />
+                        <path id="9-52-path" d="M344 771V800" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-7-31">
-                        <path id="7-31-path" d="M308 410V462" stroke="#393939" stroke-width="8" />
+                        <path id="7-31-path" d="M308 410V462" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-1-8">
-                        <path id="1-8-path" d="M326 410V447" stroke="#393939" stroke-width="8" />
+                        <path id="1-8-path" d="M326 410V447" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-13-33">
-                        <path id="13-33-path" d="M344 410V462" stroke="#393939" stroke-width="8" />
+                        <path id="13-33-path" d="M344 410V462" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-17-62">
-                        <path id="17-62-path" d="M308 243V302" stroke="#393939" stroke-width="8" />
+                        <path id="17-62-path" d="M308 243V302" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-23-43">
-                        <path id="23-43-path" d="M326 260V302" stroke="#393939" stroke-width="8" />
+                        <path id="23-43-path" d="M326 260V302" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-11-56">
-                        <path id="11-56-path" d="M344 243V302" stroke="#393939" stroke-width="8" />
+                        <path id="11-56-path" d="M344 243V302" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-5-15">
-                        <path id="5-15-path" d="M308 569V663" stroke="#393939" stroke-width="8" />
+                        <path id="5-15-path" d="M308 569V663" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-2-14">
-                        <path id="2-14-path" d="M326 583V663" stroke="#393939" stroke-width="8" />
+                        <path id="2-14-path" d="M326 583V663" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-29-46">
-                        <path id="29-46-path" d="M344 569V663" stroke="#393939" stroke-width="8" />
+                        <path id="29-46-path" d="M344 569V663" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-10-34">
-                        <path id="10-34-path" d="M258 515C178.818 512.076 143 528.092 132.5 556C114.441 604 155.284 650.559 273.5 682" stroke="#393939" stroke-width="8" />
+                        <path id="10-34-path" d="M258 515C178.818 512.076 143 528.092 132.5 556C114.441 604 155.284 650.559 273.5 682" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-26-44">
-                        <path id="26-44-path" d="M148 655.5C191.83 591.334 266.592 596.53 391 593.5" stroke="#393939" stroke-width="8" />
+                        <path id="26-44-path" d="M148 655.5C191.83 591.334 266.592 596.53 391 593.5" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-37-40">
-                        <path id="37-40-path" d="M481.5 592C481.5 592 499.788 629.566 506.5 656" stroke="#393939" stroke-width="8" />
+                        <path id="37-40-path" d="M481.5 592C481.5 592 499.788 629.566 506.5 656" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-21-45">
-                        <path id="21-45-path" d="M450 527C438.044 477.687 424.291 447.486 378 390" stroke="#393939" stroke-width="8" />
+                        <path id="21-45-path" d="M450 527C438.044 477.687 424.291 447.486 378 390" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-27-50">
-                        <path id="27-50-path" d="M181 689C213.151 714.257 230.88 725.268 272 739" stroke="#393939" stroke-width="8" />
+                        <path id="27-50-path" d="M181 689C213.151 714.257 230.88 725.268 272 739" stroke="#393939" strokeWidth="8" />
                     </g>
                     <g id="Channel-6-59">
-                        <path id="6-59-path" d="M470 691C437.496 715.247 419.573 725.818 378 739" stroke="#393939" stroke-width="8" />
+                        <path id="6-59-path" d="M470 691C437.496 715.247 419.573 725.818 378 739" stroke="#393939" strokeWidth="8" />
                     </g>
                 </g>
                 <g id="Centers">
                     <g id="Center-Sacral">
-                        <rect id="Sacral-shape" x="274.5" y="666.5" width="103" height="101" rx="11.5" fill="#434345" stroke="#393939" stroke-width="7" />
+                        <rect id="Sacral-shape" x="274.5" y="666.5" width="103" height="101" rx="11.5" fill="#434345" stroke="#393939" strokeWidth="7" />
                     </g>
                     <g id="Center-Root">
-                        <rect id="Root-shape" x="274.5" y="803.5" width="103" height="101" rx="11.5" fill="#434345" stroke="#393939" stroke-width="7" />
+                        <rect id="Root-shape" x="274.5" y="803.5" width="103" height="101" rx="11.5" fill="#434345" stroke="#393939" strokeWidth="7" />
                     </g>
                     <g id="Center-Spleen">
-                        <path id="Spleen-shape" d="M174.641 676.012C184.029 682.126 184.029 695.874 174.641 701.988L99.4581 750.947C89.1475 757.661 75.5001 750.262 75.5001 737.958L75.5001 640.042C75.5001 627.738 89.1475 620.339 99.4581 627.053L174.641 676.012Z" fill="#434345" stroke="#393939" stroke-width="7" />
+                        <path id="Spleen-shape" d="M174.641 676.012C184.029 682.126 184.029 695.874 174.641 701.988L99.4581 750.947C89.1475 757.661 75.5001 750.262 75.5001 737.958L75.5001 640.042C75.5001 627.738 89.1475 620.339 99.4581 627.053L174.641 676.012Z" fill="#434345" stroke="#393939" strokeWidth="7" />
                     </g>
                     <g id="Center-SolarPlexus">
-                        <path id="SolarPlexus-shape" d="M477.36 701.988C467.971 695.874 467.971 682.126 477.36 676.012L552.542 627.053C562.853 620.339 576.5 627.738 576.5 640.042V737.958C576.5 750.262 562.853 757.661 552.542 750.947L477.36 701.988Z" fill="#434345" stroke="#393939" stroke-width="7" />
+                        <path id="SolarPlexus-shape" d="M477.36 701.988C467.971 695.874 467.971 682.126 477.36 676.012L552.542 627.053C562.853 620.339 576.5 627.738 576.5 640.042V737.958C576.5 750.262 562.853 757.661 552.542 750.947L477.36 701.988Z" fill="#434345" stroke="#393939" strokeWidth="7" />
                     </g>
                     <g id="Center-Heart">
-                        <path id="Heart-shape" d="M406.794 602.802C393.089 603.429 385.386 587.254 394.51 577.009L434.838 531.732C442.212 523.454 455.64 525.367 460.407 535.376L480.648 577.877C485.415 587.886 478.439 599.518 467.364 600.026L406.794 602.802Z" fill="#434345" stroke="#393939" stroke-width="7" />
+                        <path id="Heart-shape" d="M406.794 602.802C393.089 603.429 385.386 587.254 394.51 577.009L434.838 531.732C442.212 523.454 455.64 525.367 460.407 535.376L480.648 577.877C485.415 587.886 478.439 599.518 467.364 600.026L406.794 602.802Z" fill="#434345" stroke="#393939" strokeWidth="7" />
                     </g>
                     <g id="Center-G">
-                        <rect id="G-shape" x="253.95" y="515.782" width="103" height="101" rx="11.5" transform="rotate(-45 253.95 515.782)" fill="#434345" stroke="#393939" stroke-width="7" />
+                        <rect id="G-shape" x="253.95" y="515.782" width="103" height="101" rx="11.5" transform="rotate(-45 253.95 515.782)" fill="#434345" stroke="#393939" strokeWidth="7" />
                     </g>
                     <g id="Center-Throat">
-                        <rect id="Throat-shape" x="274.5" y="305.5" width="103" height="101" rx="11.5" fill="#434345" stroke="#393939" stroke-width="7" />
+                        <rect id="Throat-shape" x="274.5" y="305.5" width="103" height="101" rx="11.5" fill="#434345" stroke="#393939" strokeWidth="7" />
                     </g>
                     <g id="Center-Ajna">
-                        <path id="Ajna-shape" d="M338.988 251.641C332.874 261.029 319.126 261.029 313.012 251.641L264.053 176.458C257.339 166.147 264.738 152.5 277.042 152.5H374.958C387.262 152.5 394.661 166.147 387.947 176.458L338.988 251.641Z" fill="#434345" stroke="#393939" stroke-width="7" />
+                        <path id="Ajna-shape" d="M338.988 251.641C332.874 261.029 319.126 261.029 313.012 251.641L264.053 176.458C257.339 166.147 264.738 152.5 277.042 152.5H374.958C387.262 152.5 394.661 166.147 387.947 176.458L338.988 251.641Z" fill="#434345" stroke="#393939" strokeWidth="7" />
                     </g>
                     <g id="Center-Head">
-                        <path id="Head-shape" d="M313.012 26.3594C319.126 16.9711 332.874 16.9711 338.988 26.3594L387.947 101.542C394.661 111.853 387.262 125.5 374.958 125.5H277.042C264.738 125.5 257.339 111.853 264.053 101.542L313.012 26.3594Z" fill="#434345" stroke="#393939" stroke-width="7" />
+                        <path id="Head-shape" d="M313.012 26.3594C319.126 16.9711 332.874 16.9711 338.988 26.3594L387.947 101.542C394.661 111.853 387.262 125.5 374.958 125.5H277.042C264.738 125.5 257.339 111.853 264.053 101.542L313.012 26.3594Z" fill="#434345" stroke="#393939" strokeWidth="7" />
                     </g>
                 </g>
                 <g id="Gates">
