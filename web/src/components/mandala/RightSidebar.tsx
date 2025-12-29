@@ -40,6 +40,7 @@ export default function RightSidebar({ hovered, selected, clearSelected }: Props
         >
           Clear
         </button>
+
       </div>
 
       <div className="mt-3 rounded-xl bg-white/5 p-3">

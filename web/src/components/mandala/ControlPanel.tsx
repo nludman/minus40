@@ -116,9 +116,7 @@ export default function ControlPanel({
             +
           </button>
         </div>
-        <div className="mt-1 text-[11px] opacity-60">
-          Tip: type a year, or use +/-.
-        </div>
+
         <div className="mt-3 grid grid-cols-1 gap-2">
           <button
             onClick={() => resetYearCache?.()}
@@ -185,44 +183,6 @@ export default function ControlPanel({
             </div>
           </div>
         )}
-      </div>
-
-      <div className="mt-4">
-        <div className="text-xs opacity-70">Segment caps</div>
-
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          <button
-            onClick={() => setArcCap("butt")}
-            className={[
-              "h-9 rounded-xl text-sm",
-              arcCap === "butt" ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/20",
-            ].join(" ")}
-          >
-            Butt
-          </button>
-
-          <button
-            onClick={() => setArcCap("round")}
-            className={[
-              "h-9 rounded-xl text-sm",
-              arcCap === "round" ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/20",
-            ].join(" ")}
-          >
-            Round
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-2">
-        <button
-          onClick={() => setShowCalendar(!showCalendar)}
-          className={[
-            "h-9 w-full rounded-xl text-sm",
-            showCalendar ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/20",
-          ].join(" ")}
-        >
-          {showCalendar ? "Calendar overlay: On" : "Calendar overlay: Off"}
-        </button>
       </div>
 
 
@@ -331,6 +291,44 @@ export default function ControlPanel({
               </div>
 
             </div>
+            <div className="mt-4">
+              <div className="text-xs opacity-70">Segment caps</div>
+
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setArcCap("butt")}
+                  className={[
+                    "h-9 rounded-xl text-sm",
+                    arcCap === "butt" ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/20",
+                  ].join(" ")}
+                >
+                  Butt
+                </button>
+
+                <button
+                  onClick={() => setArcCap("round")}
+                  className={[
+                    "h-9 rounded-xl text-sm",
+                    arcCap === "round" ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/20",
+                  ].join(" ")}
+                >
+                  Round
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-2">
+              <button
+                onClick={() => setShowCalendar(!showCalendar)}
+                className={[
+                  "h-9 w-full rounded-xl text-sm",
+                  showCalendar ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/20",
+                ].join(" ")}
+              >
+                {showCalendar ? "Calendar overlay: On" : "Calendar overlay: Off"}
+              </button>
+            </div>
+
           </>
         ) : null}
       </div>
