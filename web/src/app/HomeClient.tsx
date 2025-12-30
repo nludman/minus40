@@ -371,10 +371,16 @@ export default function Home() {
     const [journalSending, setJournalSending] = useState(false);
     //const [forceJournalFail, setForceJournalFail] = useState(false);
     const [journalError, setJournalError] = useState<string | null>(null);
+    const journalBoxRef = useRef<HTMLDivElement | null>(null);
+    const [journalBoxH, setJournalBoxH] = useState(0);
+
+    // matches your sticky bottom offset (bottom-12 = 48px)
+    const JOURNAL_BOTTOM_OFFSET_PX = 48;
+
 
     const journalTaRef = useRef<HTMLTextAreaElement | null>(null);
 
-    const JOURNAL_MIN_H = 48;   // px
+    const JOURNAL_MIN_H = 56;   // px
     const JOURNAL_MAX_H = 220;  // px
 
     useLayoutEffect(() => {
@@ -386,6 +392,15 @@ export default function Home() {
         const next = Math.max(JOURNAL_MIN_H, Math.min(JOURNAL_MAX_H, el.scrollHeight));
         el.style.height = `${next}px`;
     }, [journalDraft]);
+
+    useLayoutEffect(() => {
+        const box = journalBoxRef.current;
+        if (!box) return;
+
+        const h = Math.ceil(box.getBoundingClientRect().height);
+        setJournalBoxH(h);
+    }, [journalDraft, journalSending]);
+
 
     async function sendJournalEntry() {
         const text = journalDraft.trim();
@@ -1180,11 +1195,19 @@ export default function Home() {
                 </div>
 
                 {/* 3) Center column (the product) */}
-                <div className="h-full overflow-y-auto relative">
+                <div
+                    className="h-full overflow-y-auto relative"
+                    style={
+                        {
+                            // default background tone for this layout
+                            ["--journalMaskColor" as any]: "#83a5a9",
+                        } as React.CSSProperties
+                    }
+                >
 
                     {/* Transits */}
                     {appPage === "transits" ? (
-                        <div className="pt-6 pb-24 flex flex-col items-center">
+                        <div className="pt-6 pb-0 flex flex-col items-center">
                             <MandalaSvg />
                             <MandalaClient
                                 key={currentUser?.id ?? "anon"}
@@ -1212,47 +1235,74 @@ export default function Home() {
                                 </div>
                             </div>
 
-                            {/* Floating Journal Composer (sticky, centered, ChatGPT-style) */}
-                            <div className="sticky bottom-6 w-full flex justify-center pointer-events-none">
-                                <div className="w-[860px] max-w-[calc(100vw-2rem)] pointer-events-auto">
-                                    <div className="relative rounded-2xl border border-white/12 bg-black/70 backdrop-blur-md shadow-lg">
-                                        <textarea
-                                            ref={journalTaRef}
-                                            value={journalDraft}
-                                            onChange={(e) => setJournalDraft(e.target.value)}
-                                            placeholder="Write a journal entry..."
-                                            className="w-full resize-none rounded-2xl bg-transparent px-4 py-3 pr-12 text-sm text-white placeholder:text-white/35 outline-none"
-                                            style={{ minHeight: JOURNAL_MIN_H, maxHeight: JOURNAL_MAX_H }}
-                                            onKeyDown={(e) => {
-                                                // Enter sends, Shift+Enter newline (ChatGPT-ish)
-                                                if (e.key === "Enter" && !e.shiftKey) {
-                                                    e.preventDefault();
-                                                    void sendJournalEntry();
-                                                }
+
+                            {/* Journal mask + composer MUST live down here (outside the pb-24 wrapper) */}
+                            {appPage === "transits" ? (
+                                <>
+                                    {/* Journal Cutoff Mask (pinned, non-layout) */}
+                                    <div className="sticky bottom-0 h-0 w-full pointer-events-none z-20">
+                                        <div
+                                            className="absolute inset-x-0 bottom-0"
+                                            style={{
+                                                height: journalBoxH + JOURNAL_BOTTOM_OFFSET_PX,
+                                                background: "var(--journalMaskColor)",
                                             }}
                                         />
-
-                                        <button
-                                            onClick={() => void sendJournalEntry()}
-                                            disabled={journalSending || !journalDraft.trim()}
-                                            className="absolute right-2 bottom-2 h-9 w-9 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 disabled:opacity-40 disabled:hover:bg-white/10 flex items-center justify-center"
-                                            aria-label="Send entry"
-                                            title="Send"
-                                        >
-                                            {/* simple arrow icon */}
-                                            <span className="text-white/90 text-base">➤</span>
-                                        </button>
+                                        {/* Fade sits ABOVE the solid mask */}
+                                        <div
+                                            className="absolute inset-x-0"
+                                            style={{
+                                                bottom: journalBoxH + JOURNAL_BOTTOM_OFFSET_PX,
+                                                height: 32,
+                                                background: "linear-gradient(to bottom, transparent, var(--journalMaskColor))",
+                                            }}
+                                        />
                                     </div>
-                                    {journalError ? (
-                                        <div className="mt-1 text-xs text-red-300 px-2">
-                                            {journalError}
+
+
+
+
+                                    {/* Floating Journal Composer (pinned, non-layout) */}
+                                    <div className="sticky bottom-0 h-0 w-full pointer-events-none z-30">
+                                        <div className="absolute inset-x-0 bottom-12 flex justify-center pointer-events-none">
+                                            <div className="w-[660px] max-w-[calc(100vw-2rem)] pointer-events-auto">
+                                                <div
+                                                    ref={journalBoxRef}
+                                                    className="relative rounded-3xl border border-white/12 bg-black/70 backdrop-blur-md shadow-lg"
+                                                >
+                                                    <textarea
+                                                        ref={journalTaRef}
+                                                        value={journalDraft}
+                                                        onChange={(e) => setJournalDraft(e.target.value)}
+                                                        placeholder="Write a journal entry..."
+                                                        className="w-full resize-none rounded-2xl bg-transparent px-4 py-2.5 pr-12 text-sm text-white placeholder:text-white/35 outline-none"
+                                                        style={{ minHeight: JOURNAL_MIN_H, maxHeight: JOURNAL_MAX_H }}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === "Enter" && !e.shiftKey) {
+                                                                e.preventDefault();
+                                                                void sendJournalEntry();
+                                                            }
+                                                        }}
+                                                    />
+
+                                                    <button
+                                                        onClick={() => void sendJournalEntry()}
+                                                        disabled={journalSending || !journalDraft.trim()}
+                                                        className="absolute right-2 bottom-2 h-9 w-9 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 disabled:opacity-40 disabled:hover:bg-white/10 flex items-center justify-center"
+                                                        aria-label="Send entry"
+                                                        title="Send"
+                                                    >
+                                                        <span className="text-white/90 text-base">➤</span>
+                                                    </button>
+                                                </div>
+
+
+                                            </div>
                                         </div>
-                                    ) : null}
+                                    </div>
 
-                                </div>
-                            </div>
-
-
+                                </>
+                            ) : null}
                         </div>
                     ) : null}
 
@@ -1476,7 +1526,7 @@ export default function Home() {
                 </div>
 
             </div>
-        </div>
+        </div >
     );
 
 
