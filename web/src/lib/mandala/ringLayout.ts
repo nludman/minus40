@@ -14,6 +14,7 @@ export type RingLayoutKnobs = {
   gapRatio?: number;
   strokeMin?: number;
   strokeMax?: number;
+  showInactive?: boolean;
 };
 
 export function applyRingLayout(

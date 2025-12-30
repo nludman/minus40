@@ -5,7 +5,7 @@ export type CenterName =
     | "Ajna"
     | "Throat"
     | "G"
-    | "Ego"
+    | "Heart"
     | "Spleen"
     | "SolarPlexus"
     | "Sacral"

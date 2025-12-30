@@ -317,6 +317,30 @@ export default function ControlPanel({
               </div>
             </div>
 
+            <div className="mt-3 rounded-md border border-white/10 bg-white/5 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold">Show inactive spans</div>
+                  <div className="text-xs text-white/60">
+                    Draws a faint baseline ring for inactive time.
+                  </div>
+                </div>
+
+                <button
+                  className={`rounded-md px-3 py-1 text-xs border ${ringLayout.showInactive
+                      ? "bg-white/15 border-white/20 text-white"
+                      : "bg-black/20 border-white/10 text-white/70 hover:text-white"
+                    }`}
+                  onClick={() =>
+                    setRingLayout({ ...ringLayout, showInactive: !ringLayout.showInactive })
+                  }
+                  type="button"
+                >
+                  {ringLayout.showInactive ? "On" : "Off"}
+                </button>
+              </div>
+            </div>
+
             <div className="mt-2">
               <button
                 onClick={() => setShowCalendar(!showCalendar)}

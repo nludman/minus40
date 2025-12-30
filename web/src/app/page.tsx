@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { MandalaClient, ControlPanel, MandalaSvg, RightSidebar } from "@/components/mandala";
@@ -20,6 +20,9 @@ import TrackerMandalaSvg from "@/components/mandala/TrackerMandalaSvg";
 import TrackerMandalaClient from "@/components/mandala/TrackerMandalaClient";
 import { expandModule } from "@/lib/mandala/rings/expand";
 import { getRingModule } from "@/lib/mandala/rings/registry";
+
+import { supabaseBrowser } from "@/lib/supabase/browser";
+
 
 
 
@@ -128,53 +131,87 @@ function LeftExpandedPanel(props: LeftExpandedPanelProps) {
         </>
       ) : appPage === "trackers" ? (
         <>
-          <div className="text-xs text-white/60 px-2 pb-2">Tracker Rings</div>
+          <div className="text-xs text-white/60 px-2 pb-2">Tracker Controls</div>
 
-          <div className="px-2 py-2">
-            <div className="text-sm font-semibold mb-2">Add rings</div>
-            <div className="space-y-2">
-              {ringPalette.map((r) => (
-                <button
-                  key={r.id}
-                  className="w-full text-left rounded-md bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-2"
-                  onClick={() => addTrackerRing(r.id)}
-                >
-                  <div className="text-sm">{r.label}</div>
-                  <div className="text-xs text-white/50">{r.kind}</div>
-                </button>
-              ))}
+          {/* Ring selection UI */}
+          <div className="mt-4 border-t border-white/10 pt-4">
+            <div className="text-xs text-white/60 px-2 pb-2">Tracker Rings</div>
+
+            <div className="px-2 py-2">
+              <div className="text-sm font-semibold mb-2">Add rings</div>
+              <div className="space-y-2">
+                {ringPalette.map((r) => (
+                  <button
+                    key={r.id}
+                    className="w-full text-left rounded-md bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-2"
+                    onClick={() => addTrackerRing(r.id)}
+                  >
+                    <div className="text-sm">{r.label}</div>
+                    <div className="text-xs text-white/50">{r.kind}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4 px-2 py-2 border-t border-white/10">
+              <div className="text-sm font-semibold mb-2">Current rings</div>
+
+              {trackerRings.length === 0 ? (
+                <div className="text-xs text-white/60">No rings yet. Add one from above.</div>
+              ) : (
+                <div className="space-y-2">
+                  {trackerRings.map((inst) => (
+                    <div
+                      key={inst.instanceId}
+                      className="rounded-md bg-white/5 border border-white/10 px-3 py-2 flex items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm truncate">{inst.label ?? inst.moduleId}</div>
+                        <div className="text-xs text-white/50 truncate">{inst.moduleId}</div>
+                      </div>
+                      <button
+                        className="text-xs text-white/60 hover:text-white"
+                        onClick={() => removeTrackerRing(inst.instanceId)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="mt-4 px-2 py-2 border-t border-white/10">
-            <div className="text-sm font-semibold mb-2">Current rings</div>
 
-            {trackerRings.length === 0 ? (
-              <div className="text-xs text-white/60">No rings yet. Add one from above.</div>
-            ) : (
-              <div className="space-y-2">
-                {trackerRings.map((inst) => (
-                  <div
-                    key={inst.instanceId}
-                    className="rounded-md bg-white/5 border border-white/10 px-3 py-2 flex items-center justify-between gap-2"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-sm truncate">{inst.label ?? inst.moduleId}</div>
-                      <div className="text-xs text-white/50 truncate">{inst.moduleId}</div>
-                    </div>
-                    <button
-                      className="text-xs text-white/60 hover:text-white"
-                      onClick={() => removeTrackerRing(inst.instanceId)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Mandala layout controls (same knobs that affect tracker mandala) */}
+          <ControlPanel
+            variant="embedded"
+            year={year}
+            setYear={(y) => {
+              setYear(y);
+              pushNav(y, nav);
+            }}
+            visiblePlanets={visiblePlanets}
+            togglePlanet={togglePlanet}
+            toggleGroup={toggleGroup}
+            arcCap={arcCap}
+            setArcCap={setArcCap}
+            ringLayout={ringLayout}
+            setRingLayout={setRingLayout}
+            showCalendar={showCalendar}
+            setShowCalendar={setShowCalendar}
+            resetYearCache={resetYearCache}
+            resetUserCache={resetUserCache}
+            gapPxRound={gapPxRound}
+            setGapPxRound={setGapPxRound}
+            gapPxButt={gapPxButt}
+            setGapPxButt={setGapPxButt}
+          />
+
+
         </>
       ) : (
+
         <>
           <div className="text-xs text-white/60 px-2 pb-2">Panel</div>
           <div className="text-white/60 text-sm px-2">
@@ -189,11 +226,61 @@ function LeftExpandedPanel(props: LeftExpandedPanelProps) {
 
 export default function Home() {
 
+  const SESSION_KEY = "mandala.session.v1";
+
+  type MandalaSession = {
+    year: number;
+    nav: { view: "calendar" | "tracker"; span: "year" | "quarter" | "month" | "week"; m?: number };
+    visiblePlanets: Record<string, boolean>;
+    arcCap: "round" | "butt";
+    gapPxRound: number;
+    gapPxButt: number;
+    showCalendar: boolean;
+    ringLayout: import("@/lib/mandala/ringLayout").RingLayoutKnobs;
+    sidebarExpanded: boolean;
+    isUserPanelOpen: boolean;
+  };
+
+  function safeParseSession(): MandalaSession | null {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(SESSION_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw) as MandalaSession;
+    } catch {
+      return null;
+    }
+  }
+
+  function safeWriteSession(s: MandalaSession) {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+    } catch { }
+  }
+
+
   // =========================
   // Trackers: ring stack (starts empty)
   // =========================
   const [trackerRings, setTrackerRings] = useState<RingInstance[]>([]);
   const [trackerFocusId, setTrackerFocusId] = useState<string | null>(null);
+
+  const handleTrackerRingClick = useCallback(
+    ({ instanceId, moduleId }: { instanceId: string; moduleId: string }) => {
+      setTrackerFocusId(instanceId);
+
+      const { add } = expandModule(moduleId);
+      for (const childModuleId of add) {
+        addTrackerRingIfMissing(childModuleId, {
+          parentInstanceId: instanceId,
+          insertBeforeInstanceId: instanceId,
+        });
+      }
+    },
+    []
+  );
+
 
 
   const addTrackerRing = (
@@ -226,14 +313,12 @@ export default function Home() {
   };
 
 
-  const addTrackerRingIfMissing = (
+  function addTrackerRingIfMissing(
     moduleId: string,
-    opts?: {
-      parentInstanceId?: string | null;
-      insertBeforeInstanceId?: string;
-    }
-  ) => {
+    opts?: { parentInstanceId?: string | null; insertBeforeInstanceId?: string }
+  ) {
     setTrackerRings((prev) => {
+
       if (prev.some((r) => r.moduleId === moduleId)) return prev;
 
       const mod = getRingModule(moduleId);
@@ -259,7 +344,7 @@ export default function Home() {
       // Default: append (same behavior as before)
       return [...prev, nextInst];
     });
-  };
+  }
 
 
 
@@ -319,6 +404,7 @@ export default function Home() {
   useEffect(() => setYear(yearFromUrl), [yearFromUrl]);
   useEffect(() => setNav(navFromUrl), [navFromUrl]);
 
+
   function pushNav(nextYear: number, nextNav: NavState) {
     const p = new URLSearchParams();
     p.set("y", String(nextYear));
@@ -336,7 +422,7 @@ export default function Home() {
   // =========================
   // UI state (NOT URL)
   // =========================
-  const [arcCap, setArcCap] = useState<"round" | "butt">("butt");
+  const [arcCap, setArcCap] = useState<"round" | "butt">("round");
   const [gapPxRound, setGapPxRound] = useState(0.5);
   const [gapPxButt, setGapPxButt] = useState(0.35);
 
@@ -346,31 +432,18 @@ export default function Home() {
     Moon: true,
     Sun: true,
     Earth: true,
-    Mercury: true,
-    Venus: true,
-    Mars: true,
-    Jupiter: true,
-    Saturn: true,
-    Uranus: true,
-    Neptune: true,
-    Pluto: true,
     NorthNode: true,
     SouthNode: true,
+
+    Mercury: false,
+    Venus: false,
+    Mars: false,
+    Jupiter: false,
+    Saturn: false,
+    Uranus: false,
+    Neptune: false,
+    Pluto: false,
   });
-
-  const [yearReloadKey, setYearReloadKey] = useState(0);
-  const [yearReloadMode, setYearReloadMode] = useState<"normal" | "reset">("normal");
-
-  const [userReloadKey, setUserReloadKey] = useState(0);
-  const [userChart, setUserChart] = useState<UserChartPayload | null>(null);
-  const [isUserPanelOpen, setIsUserPanelOpen] = useState(true);
-  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
-
-
-  useEffect(() => {
-    // client-only (localStorage)
-    setUserChart(loadUserChart());
-  }, [userReloadKey]);
 
   const [ringLayout, setRingLayout] = useState<import("@/lib/mandala/ringLayout").RingLayoutKnobs>({
     centerR: 391.25,
@@ -378,7 +451,267 @@ export default function Home() {
     gapRatio: 0.35,
     strokeMin: 14,
     strokeMax: 44,
+    showInactive: false,
   });
+
+  const [yearReloadKey, setYearReloadKey] = useState(0);
+  const [yearReloadMode, setYearReloadMode] = useState<"normal" | "reset">("normal");
+
+  const [userReloadKey, setUserReloadKey] = useState(0);
+  const [userChart, setUserChart] = useState<UserChartPayload | null>(null);
+  const [chartSource, setChartSource] = useState<"cloud" | "local" | null>(null);
+
+  const [isUserPanelOpen, setIsUserPanelOpen] = useState(true);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
+
+  // =========================
+  // Auth (Supabase magic link)
+  // =========================
+  const [authEmail, setAuthEmail] = useState("");
+  const [authMsg, setAuthMsg] = useState<string | null>(null);
+
+  const sendMagicLink = async () => {
+    setAuthMsg(null);
+
+    const email = authEmail.trim();
+    if (!email) return;
+
+    const supabase = supabaseBrowser();
+    const origin = window.location.origin;
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${origin}/auth/callback`,
+      },
+    });
+
+    if (error) setAuthMsg(error.message);
+    else setAuthMsg("Check your email for the sign-in link.");
+  };
+
+  const signOut = async () => {
+    const supabase = supabaseBrowser();
+    const { error } = await supabase.auth.signOut();
+
+    if (error) setAuthMsg(error.message);
+
+    else {
+      setAuthMsg("Signed out.");
+      setUserChart(null);
+      setChartSource(null);
+    }
+
+  };
+
+  const [currentUser, setCurrentUser] = useState<{
+    id: string;
+    email: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    const supabase = supabaseBrowser();
+
+    const upsertProfile = async (u: { id: string; email?: string | null }) => {
+      // Upsert your profile row (RLS ensures only the authed user can write their own id)
+      const { error } = await supabase.from("profiles").upsert(
+        {
+          id: u.id,
+          email: u.email ?? null,
+        },
+        { onConflict: "id" }
+      );
+
+      if (error) {
+        console.warn("profiles upsert failed:", error.message);
+      }
+    };
+
+
+    // 1) initial load
+    supabase.auth.getUser().then(({ data }) => {
+
+      if (data.user) {
+        const u = { id: data.user.id, email: data.user.email ?? null };
+        setCurrentUser(u);
+        void upsertProfile(u);
+        void refreshUserChart(u.id);
+      } else {
+        setCurrentUser(null);
+      }
+
+    });
+
+    // 2) live updates (login/logout/refresh)
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      const u = session?.user ?? null;
+
+      if (u) {
+        const userObj = { id: u.id, email: u.email ?? null };
+        setCurrentUser(userObj);
+        void upsertProfile(userObj);
+        void refreshUserChart(u.id);
+      } else {
+        setCurrentUser(null);
+
+        // ✅ Clear in-memory chart on sign out
+        setUserChart(null);
+
+        // Optional: also clear any selected/hover UI if you want
+        // setSelectedInfo(null);
+        // setHoverInfo(null);
+      }
+
+
+    });
+
+    return () => {
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  const loadChartForUser = async (userId: string) => {
+    const supabase = supabaseBrowser();
+
+    const { data, error } = await supabase
+      .from("charts")
+      .select("id,label,payload")
+      .eq("owner_id", userId)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (error) {
+      console.warn("loadChartForUser failed:", error.message);
+      return null;
+    }
+
+    return data?.[0] ?? null;
+  };
+
+  const saveChartForUser = async (userId: string, payload: UserChartPayload, label = "Me") => {
+    const supabase = supabaseBrowser();
+
+    const { error } = await supabase.from("charts").upsert(
+      {
+        owner_id: userId,
+        label,
+        payload,
+      },
+      // We want ONE “primary chart” row for now.
+      // So we upsert by (owner_id, label) — but that requires a unique constraint.
+      // We'll add that constraint next if you want.
+      {}
+    );
+
+    if (error) {
+      console.warn("saveChartForUser failed:", error.message);
+    }
+  };
+
+  const refreshUserChart = async (userId: string) => {
+    const row = await loadChartForUser(userId);
+    if (row?.payload) {
+      setUserChart(row.payload as UserChartPayload);
+      setChartSource("cloud");
+      return true;
+    }
+    setUserChart(null);
+    setChartSource(null);
+    return false;
+  };
+
+
+
+
+  // =========================
+  // Session restore (runs once)
+  // =========================
+  useEffect(() => {
+    // If URL has explicit nav, do NOT override with session
+    const hasUrlNav =
+      searchParams.has("y") ||
+      searchParams.has("view") ||
+      searchParams.has("span") ||
+      searchParams.has("m");
+
+    if (hasUrlNav) return;
+
+    const s = safeParseSession();
+    if (!s) return;
+
+    setSidebarExpanded(s.sidebarExpanded);
+    setIsUserPanelOpen(s.isUserPanelOpen);
+
+    setArcCap(s.arcCap);
+    setGapPxRound(s.gapPxRound);
+    setGapPxButt(s.gapPxButt);
+    setShowCalendar(s.showCalendar);
+    setRingLayout(s.ringLayout);
+    setVisiblePlanets(s.visiblePlanets);
+
+    setYear(s.year);
+    setNav(s.nav);
+
+    // Keep URL shareable + consistent with restored session
+    pushNav(s.year, s.nav);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // =========================
+  // Session persist
+  // =========================
+  useEffect(() => {
+    const s: MandalaSession = {
+      year,
+      nav,
+      visiblePlanets,
+      arcCap,
+      gapPxRound,
+      gapPxButt,
+      showCalendar,
+      ringLayout,
+      sidebarExpanded,
+      isUserPanelOpen,
+    };
+    safeWriteSession(s);
+  }, [
+    year,
+    nav,
+    visiblePlanets,
+    arcCap,
+    gapPxRound,
+    gapPxButt,
+    showCalendar,
+    ringLayout,
+    sidebarExpanded,
+    isUserPanelOpen,
+  ]);
+
+  useEffect(() => {
+    if (currentUser?.id) {
+      loadChartForUser(currentUser.id).then((row) => {
+        if (row?.payload) {
+          setUserChart(row.payload as UserChartPayload);
+          setChartSource("cloud");
+        } else {
+          setUserChart(null);
+          setChartSource(null);
+        }
+      });
+    } else {
+      // ✅ Signed out:
+      // - if user is working with a local chart, keep it
+      // - otherwise clear
+      if (chartSource !== "local") {
+        setUserChart(null);
+        setChartSource(null);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userReloadKey, currentUser?.id, chartSource]);
+
+
+
 
   const [hoverInfo, setHoverInfo] = useState<HoverInfo>(null);
   const [selectedInfo, setSelectedInfo] = useState<HoverInfo>(null);
@@ -409,10 +742,21 @@ export default function Home() {
   };
 
   const onUserChartUploaded = (payload: UserChartPayload) => {
+    // Always keep local cache for fast boot / offline-ish
     saveUserChart(payload);
     setUserChart(payload);
     setUserReloadKey((k) => k + 1);
+
+    if (currentUser?.id) {
+      setChartSource("cloud");
+      void saveChartForUser(currentUser.id, payload, "Me");
+    } else {
+      // ✅ signed out upload = local working session
+      setChartSource("local");
+    }
   };
+
+
 
   const resetUserCache = () => {
     try {
@@ -524,6 +868,7 @@ export default function Home() {
                 <div className="pt-6 pb-24 flex flex-col items-center">
                   <MandalaSvg />
                   <MandalaClient
+                    key={currentUser?.id ?? "anon"}
                     year={year}
                     visiblePlanets={visiblePlanets}
                     onHover={setHoverInfo}
@@ -544,7 +889,7 @@ export default function Home() {
                   {/* Bodygraph goes BELOW mandala (scrolls with column) */}
                   <div className="mt-8 w-full flex justify-center">
                     <div className="w-[860px] max-w-[calc(100vw-2rem)]">
-                      <UserChartVisual userChart={userChart} />
+                      <UserChartVisual key={currentUser?.id ?? "anon"} userChart={userChart} />
                     </div>
                   </div>
 
@@ -605,20 +950,9 @@ export default function Home() {
                   focusInstanceId={trackerFocusId}
                   maxVisible={12}
                   fadeCount={4}
-                  onRingClick={({ instanceId, moduleId }) => {
-                    setTrackerFocusId(instanceId);
-
-                    const { add } = expandModule(moduleId);
-
-                    // Spawn children inward: insert BEFORE the parent instance
-                    for (const childModuleId of add) {
-                      addTrackerRingIfMissing(childModuleId, {
-                        parentInstanceId: instanceId,
-                        insertBeforeInstanceId: instanceId,
-                      });
-                    }
-                  }}
+                  onRingClick={handleTrackerRingClick}
                 />
+
 
 
                 <div className="mt-4 text-white/60 text-sm">
@@ -631,11 +965,56 @@ export default function Home() {
 
           {/* Account page */}
           {appPage === "account" ? (
-            <div className="p-6">
-              <div className="text-xl font-semibold mb-2">Account</div>
-              <div className="text-white/60">(Placeholder.)</div>
+            <div className="p-6 max-w-md">
+              <div className="text-xl font-semibold mb-4">Account</div>
+
+              {currentUser ? (
+                <div className="text-sm text-white/70 mb-3">
+                  Signed in as <span className="text-white">{currentUser.email}</span>
+                </div>
+              ) : (
+                <div className="text-sm text-white/40 mb-3">
+                  Not signed in
+                </div>
+              )}
+
+
+              <div className="space-y-3">
+                <label className="block text-xs text-white/60">Email</label>
+
+                <input
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  placeholder="you@email.com"
+                  className="w-full rounded-md bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-white/30"
+                />
+
+                <div className="flex gap-3">
+                  <button
+                    className="rounded-md bg-white/10 hover:bg-white/15 border border-white/15 px-4 py-2 text-sm disabled:opacity-50"
+                    onClick={sendMagicLink}
+                    disabled={!authEmail.trim()}
+                  >
+                    Email me a login link
+                  </button>
+
+                  <button
+                    className="rounded-md bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 text-sm text-white/70"
+                    onClick={signOut}
+                  >
+                    Sign out
+                  </button>
+                </div>
+
+                {authMsg ? <div className="text-sm text-white/60">{authMsg}</div> : null}
+
+                <div className="text-xs text-white/40 pt-2">
+                  (Beta auth: magic link.)
+                </div>
+              </div>
             </div>
           ) : null}
+
         </div>
       </div>
     </div>

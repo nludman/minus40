@@ -2,10 +2,12 @@
 
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getRingModule } from "@/lib/mandala/rings/registry";
 import type { RingInstance, RingBuildContext, MandalaLayers } from "@/lib/mandala/rings/types";
 import type { RingLayoutKnobs } from "@/lib/mandala/ringLayout";
+import { deriveGateSpans } from "@/lib/mandala/rings/derive";
+
 
 
 function getLayers(svg: SVGSVGElement): MandalaLayers | null {
@@ -69,6 +71,39 @@ export default function TrackerMandalaClient({
     fadeCount = 4,
     onRingClick,
 }: Props) {
+
+    const [payload, setPayload] = useState<unknown>(null);
+
+    const onRingClickRef = useRef<Props["onRingClick"]>(onRingClick);
+    useEffect(() => {
+        onRingClickRef.current = onRingClick;
+    }, [onRingClick]);
+
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function load() {
+            try {
+                const res = await fetch(
+                    `/api/segments-year?year=${year}&view=calendar&span=year`,
+                    { cache: "no-store" }
+                );
+                if (!res.ok) throw new Error(`segments-year fetch failed: ${res.status}`);
+                const json = await res.json();
+                if (!cancelled) setPayload(json);
+            } catch {
+                if (!cancelled) setPayload(null);
+            }
+        }
+
+        load();
+        return () => {
+            cancelled = true;
+        };
+    }, [year]);
+
+
     useEffect(() => {
         let cancelled = false;
 
@@ -88,7 +123,8 @@ export default function TrackerMandalaClient({
 
             ev.stopPropagation();
 
-            onRingClick?.({ instanceId, moduleId });
+            onRingClickRef.current?.({ instanceId, moduleId });
+
         };
 
         async function run() {
@@ -102,20 +138,9 @@ export default function TrackerMandalaClient({
             const startMs = Date.UTC(year, 0, 1, 0, 0, 0, 0);
             const endMs = Date.UTC(year + 1, 0, 1, 0, 0, 0, 0);
 
-            // ✅ Fetch yearly segments payload
-            let payload: unknown = null;
-            try {
-                const res = await fetch(
-                    `/api/segments-year?year=${year}&view=calendar&span=year`,
-                    { cache: "no-store" }
-                );
-                if (!res.ok) throw new Error(`segments-year fetch failed: ${res.status}`);
-                payload = await res.json();
-            } catch {
-                payload = null;
-            }
-
             if (cancelled) return;
+
+            const gateSpans = deriveGateSpans(payload);
 
             const ctx: RingBuildContext = {
                 svg,
@@ -124,7 +149,7 @@ export default function TrackerMandalaClient({
                 range: { startMs, endMs },
                 rings,
                 getRoot: (inst) => ensureInstanceRoot(layers, inst),
-                data: payload,
+                data: { payload, gateSpans },
             };
 
             // ---- Focus / window / fade logic ----
@@ -239,7 +264,7 @@ export default function TrackerMandalaClient({
             cancelled = true;
             if (svgEl) svgEl.removeEventListener("click", onClick);
         };
-    }, [rings, year, ringLayout, focusInstanceId, maxVisible, fadeCount, onRingClick]);
+    }, [rings, year, ringLayout, focusInstanceId, maxVisible, fadeCount, payload]);
 
 
 
