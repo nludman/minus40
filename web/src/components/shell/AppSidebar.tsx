@@ -6,7 +6,9 @@
 
 "use client";
 
-type AppPage = "transits" | "journal" | "trackers" | "account";
+type AppPage = "transits" | "charts" | "journal" | "trackers" | "settings" | "account";
+type LeftPanelMode = AppPage | "settings";
+
 
 function Icon({ label }: { label: string }) {
     // simple placeholder icon
@@ -17,17 +19,26 @@ function Icon({ label }: { label: string }) {
     );
 }
 
+type AppSidebarProps = {
+    active: AppPage;
+    panelMode: LeftPanelMode;
+    onSelect: (p: AppPage | "settings") => void;
+    isExpanded: boolean;
+    setExpanded: (v: boolean) => void;
+};
+
+
 export default function AppSidebar({
     active,
+    panelMode,
     onSelect,
     isExpanded,
     setExpanded,
-}: {
-    active: AppPage;
-    onSelect: (p: AppPage) => void;
-    isExpanded: boolean;
-    setExpanded: (v: boolean) => void;
-}) {
+}: AppSidebarProps) {
+
+
+    const isSettingsActive = panelMode === "settings";
+
     return (
         <div className="h-screen w-[56px] bg-black/40 border-r border-white/10 flex flex-col items-center py-3">
             <button
@@ -49,6 +60,18 @@ export default function AppSidebar({
                 >
                     <Icon label="Transits" />
                 </button>
+
+                <button
+                    onClick={() => onSelect("charts")}
+                    className={[
+                        "h-10 w-full rounded-xl border border-white/10 flex items-center justify-center",
+                        active === "charts" ? "bg-white/10" : "bg-white/5 hover:bg-white/10",
+                    ].join(" ")}
+                    title="Charts"
+                >
+                    <Icon label="Charts" />
+                </button>
+
 
                 <button
                     onClick={() => onSelect("journal")}
@@ -73,7 +96,21 @@ export default function AppSidebar({
                 </button>
             </div>
 
+
             <div className="mt-auto w-full px-2 pb-3">
+
+                <button
+                    onClick={() => onSelect("settings")}
+                    className={[
+                        "h-10 w-full rounded-xl border border-white/10 flex items-center justify-center mb-2",
+                        isSettingsActive ? "bg-white/10" : "bg-white/5 hover:bg-white/10",
+                    ].join(" ")}
+                    title="Settings"
+                >
+                    <Icon label="Settings" />
+                </button>
+
+
                 <button
                     onClick={() => onSelect("account")}
                     className={[

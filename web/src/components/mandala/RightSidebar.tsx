@@ -29,7 +29,7 @@ export default function RightSidebar({ hovered, selected, clearSelected }: Props
   const seg = info ? findSegment(info) : null;
 
   return (
-    <div className="fixed right-4 top-4 z-50 w-[320px] rounded-2xl bg-black/60 p-4 text-white backdrop-blur border border-white/10">
+    <div className="h-full w-full bg-black/30 border-l border-white/10 p-4 text-white backdrop-blur overflow-y-auto">
       <div className="flex items-center justify-between">
         <div className="text-sm font-semibold tracking-wide">Gate / Planet</div>
         <button

@@ -1,7 +1,7 @@
 "use client";
 
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef, useLayoutEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { MandalaClient, ControlPanel, MandalaSvg, RightSidebar } from "@/components/mandala";
@@ -27,10 +27,13 @@ import { supabaseBrowser } from "@/lib/supabase/browser";
 
 
 
-type AppPage = "transits" | "trackers" | "journal" | "account";
+type AppPage = "transits" | "charts" | "trackers" | "journal" | "account";
+type LeftPanelMode = AppPage | "settings";
+
 
 type LeftExpandedPanelProps = {
-    appPage: AppPage;
+    panelMode: LeftPanelMode;
+
 
     // transits props
     year: number;
@@ -63,11 +66,18 @@ type LeftExpandedPanelProps = {
     trackerRings: RingInstance[];
     addTrackerRing: (moduleId: string) => void;
     removeTrackerRing: (instanceId: string) => void;
+
+    // settings props
+    userChart: UserChartPayload | null;
+    selectedInfo: HoverInfo;
+    onUserChartUploaded: (payload: UserChartPayload) => void;
+    onJournalSaved: () => void;
+
 };
 
 function LeftExpandedPanel(props: LeftExpandedPanelProps) {
     const {
-        appPage,
+        panelMode,
 
         year,
         setYear,
@@ -102,7 +112,7 @@ function LeftExpandedPanel(props: LeftExpandedPanelProps) {
 
     return (
         <div className="fixed left-[56px] top-0 h-screen w-[340px] bg-black/30 border-r border-white/10 p-3 overflow-auto z-40">
-            {appPage === "transits" ? (
+            {panelMode === "transits" ? (
                 <>
                     <div className="text-xs text-white/60 px-2 pb-2">Mandala Controls</div>
 
@@ -130,7 +140,7 @@ function LeftExpandedPanel(props: LeftExpandedPanelProps) {
                         setGapPxButt={setGapPxButt}
                     />
                 </>
-            ) : appPage === "trackers" ? (
+            ) : panelMode === "trackers" ? (
                 <>
                     <div className="text-xs text-white/60 px-2 pb-2">Tracker Controls</div>
 
@@ -211,6 +221,20 @@ function LeftExpandedPanel(props: LeftExpandedPanelProps) {
 
 
                 </>
+            ) : panelMode === "settings" ? (
+                <>
+                    <div className="text-xs text-white/60 px-2 pb-2">Settings</div>
+                    <UserChartPanel
+                        userChart={props.userChart}
+                        onUserChartUploaded={props.onUserChartUploaded}
+                        onResetUserCache={props.resetUserCache}
+                        isOpen={true}
+                        onToggleOpen={() => { }}
+                        year={props.year}
+                        selected={props.selectedInfo}
+                        onJournalSaved={props.onJournalSaved}
+                    />
+                </>
             ) : (
 
                 <>
@@ -229,6 +253,16 @@ export default function Home() {
 
     const SESSION_KEY = "mandala.session.v1";
 
+    const RIGHT_SLIVER = 14;         // visible edge when "closed"
+    const RIGHT_MIN_OPEN = 280;      // smallest usable open width
+    const RIGHT_MAX = 520;
+
+    const RIGHT_SNAP_CLOSE_AT = 140; // drag below this => snap closed
+    const RIGHT_SNAP_OPEN_AT = 200;  // drag above this => snap open
+    const RIGHT_RENDER_MIN = 220;    // only render sidebar contents above this
+    const RIGHT_OPEN_DRAG_DELTA = 24; // drag ~24px left from the sliver to open
+
+
     type MandalaSession = {
         year: number;
         nav: { view: "calendar" | "tracker"; span: "year" | "quarter" | "month" | "week"; m?: number };
@@ -239,8 +273,78 @@ export default function Home() {
         showCalendar: boolean;
         ringLayout: import("@/lib/mandala/ringLayout").RingLayoutKnobs;
         sidebarExpanded: boolean;
-        isUserPanelOpen: boolean;
+
     };
+
+
+    // NOTE: Drag open/close behavior works but needs refinement.
+    // Leaving as-is to move forward with Charts implementation.
+
+    function startRightResize(e: React.MouseEvent) {
+        e.preventDefault();
+        setRightIsDragging(true);
+
+        // internal drag-mode for this gesture
+        let mode: "closed" | "open" = isRightSidebarOpen ? "open" : "closed";
+
+        let baseX = e.clientX;
+        let baseW = mode === "open" ? rightW : RIGHT_SLIVER;
+
+        const OPEN_DELTA = 18; // drag ~18px left from sliver to open
+
+        function cleanup() {
+            window.removeEventListener("mousemove", onMove);
+            window.removeEventListener("mouseup", onUp);
+        }
+
+        function snapClose() {
+            // enable transition for the snap
+            setRightIsDragging(false);
+            setIsRightSidebarOpen(false);
+            cleanup();
+        }
+
+        function onMove(ev: MouseEvent) {
+            const dx = ev.clientX - baseX;
+            const proposed = baseW - dx; // drag left => wider
+
+            // ✅ ONLY snap-close if we are currently OPEN
+            if (mode === "open" && proposed < RIGHT_SNAP_CLOSE_AT) {
+                snapClose();
+                return;
+            }
+
+            // If currently closed, open after a small drag
+            if (mode === "closed") {
+                if (proposed >= RIGHT_SLIVER + OPEN_DELTA) {
+                    mode = "open";
+                    setIsRightSidebarOpen(true);
+
+                    const next = Math.max(RIGHT_MIN_OPEN, Math.min(RIGHT_MAX, proposed));
+                    setRightW(next);
+
+                    // reset baseline so it feels continuous
+                    baseX = ev.clientX;
+                    baseW = next;
+                }
+                return;
+            }
+
+            // mode === "open": live resize (no transition during drag)
+            const next = Math.max(RIGHT_MIN_OPEN, Math.min(RIGHT_MAX, proposed));
+            setRightW(next);
+        }
+
+        function onUp() {
+            cleanup();
+            setRightIsDragging(false);
+        }
+
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+    }
+
+
 
     function safeParseSession(): MandalaSession | null {
         if (typeof window === "undefined") return null;
@@ -259,6 +363,75 @@ export default function Home() {
             window.localStorage.setItem(SESSION_KEY, JSON.stringify(s));
         } catch { }
     }
+
+    // =========================
+    // Floating Journal Composer (Phase 1: UI only)
+    // =========================
+    const [journalDraft, setJournalDraft] = useState("");
+    const [journalSending, setJournalSending] = useState(false);
+    //const [forceJournalFail, setForceJournalFail] = useState(false);
+    const [journalError, setJournalError] = useState<string | null>(null);
+
+    const journalTaRef = useRef<HTMLTextAreaElement | null>(null);
+
+    const JOURNAL_MIN_H = 48;   // px
+    const JOURNAL_MAX_H = 220;  // px
+
+    useLayoutEffect(() => {
+        const el = journalTaRef.current;
+        if (!el) return;
+
+        // reset then measure
+        el.style.height = "0px";
+        const next = Math.max(JOURNAL_MIN_H, Math.min(JOURNAL_MAX_H, el.scrollHeight));
+        el.style.height = `${next}px`;
+    }, [journalDraft]);
+
+    async function sendJournalEntry() {
+        const text = journalDraft.trim();
+        if (!text) return;
+
+        //if (forceJournalFail) {
+        //    setJournalError("Couldn’t save entry. Try again.");
+        //    return;
+        //}
+
+
+        // If not signed in, keep the UI behavior but don't write to DB yet
+        if (!currentUser?.id) {
+            setJournalDraft("");
+            setJournalReloadKey((k) => k + 1);
+            return;
+        }
+
+        setJournalSending(true);
+        try {
+            const supabase = supabaseBrowser();
+
+            const { error } = await supabase.from("journal_entries").insert({
+                owner_id: currentUser.id,
+                chart_id: activeChartId,   // nullable; ties entry to current chart if selected
+                content: text,
+                nav: nav,                  // snapshot of current view/span/month
+                selected: selectedInfo,    // snapshot of selected segment/gate/channel
+                meta: {
+                    year,
+                    appPage: appPage,
+                },
+            });
+
+            if (error) {
+                setJournalError("Couldn’t save entry. Try again.");
+                return;
+            }
+
+            setJournalError(null);
+            setJournalDraft("");
+        } finally {
+            setJournalSending(false);
+        }
+    }
+
 
 
     // =========================
@@ -354,10 +527,27 @@ export default function Home() {
     };
 
 
-
     const [appPage, setAppPage] = useState<AppPage>("transits");
+    const [leftPanelMode, setLeftPanelMode] = useState<LeftPanelMode>("transits");
 
     const [sidebarExpanded, setSidebarExpanded] = useState(true);
+
+    const [leftW, setLeftW] = useState(340);
+    const [rightW, setRightW] = useState(320);
+    const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
+
+    const rightOpenRef = useRef(isRightSidebarOpen);
+    const rightWRef = useRef(rightW);
+
+    useEffect(() => {
+        rightOpenRef.current = isRightSidebarOpen;
+    }, [isRightSidebarOpen]);
+
+    useEffect(() => {
+        rightWRef.current = rightW;
+    }, [rightW]);
+
+    const [rightIsDragging, setRightIsDragging] = useState(false);
 
 
     // =========================
@@ -461,9 +651,6 @@ export default function Home() {
     const [userReloadKey, setUserReloadKey] = useState(0);
     const [userChart, setUserChart] = useState<UserChartPayload | null>(null);
     const [chartSource, setChartSource] = useState<"cloud" | "local" | null>(null);
-
-    const [isUserPanelOpen, setIsUserPanelOpen] = useState(true);
-    const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
 
     // =========================
     // Auth (Supabase magic link)
@@ -571,6 +758,113 @@ export default function Home() {
         };
     }, []);
 
+    type ChartRow = {
+        id: string;
+        label: string | null;
+        updated_at: string | null;
+        payload: any;
+    };
+
+    const [charts, setCharts] = useState<ChartRow[]>([]);
+    const [chartsLoading, setChartsLoading] = useState(false);
+    const [chartsError, setChartsError] = useState<string | null>(null);
+    const [activeChartId, setActiveChartId] = useState<string | null>(null);
+
+    // Create flow
+    const [isCreateOpen, setIsCreateOpen] = useState(false);
+    const [newChartLabel, setNewChartLabel] = useState("New Chart");
+    const [newChartJson, setNewChartJson] = useState("");
+    const [createBusy, setCreateBusy] = useState(false);
+    const [createError, setCreateError] = useState<string | null>(null);
+
+    async function refreshChartsList(userId: string) {
+        setChartsLoading(true);
+        setChartsError(null);
+
+        const supabase = supabaseBrowser();
+        const { data, error } = await supabase
+            .from("charts")
+            .select("id,label,updated_at,payload")
+            .eq("owner_id", userId)
+            .order("updated_at", { ascending: false });
+
+        if (error) {
+            setChartsError(error.message);
+            setCharts([]);
+        } else {
+            setCharts((data ?? []) as ChartRow[]);
+        }
+
+        setChartsLoading(false);
+    }
+
+    function applyChart(row: ChartRow) {
+        // Load into app memory + local cache
+        setUserChart(row.payload as UserChartPayload);
+        setChartSource("cloud");
+        setActiveChartId(row.id);
+        try {
+            saveUserChart(row.payload as UserChartPayload);
+        } catch { }
+
+        // Jump to transits so you see it immediately
+        setAppPage("transits");
+        setLeftPanelMode("transits");
+        setSidebarExpanded(true);
+    }
+
+    async function createChartFromJson() {
+        if (!currentUser?.id) return;
+
+        setCreateBusy(true);
+        setCreateError(null);
+
+        let payloadObj: any;
+        try {
+            payloadObj = JSON.parse(newChartJson);
+        } catch {
+            setCreateError("Invalid JSON.");
+            setCreateBusy(false);
+            return;
+        }
+
+        const supabase = supabaseBrowser();
+        const { data, error } = await supabase
+            .from("charts")
+            .insert({
+                owner_id: currentUser.id,
+                label: newChartLabel.trim() || "New Chart",
+                payload: payloadObj,
+            })
+            .select("id,label,updated_at,payload")
+            .single();
+
+        if (error) {
+            setCreateError(error.message);
+            setCreateBusy(false);
+            return;
+        }
+
+        setIsCreateOpen(false);
+        setNewChartJson("");
+        setNewChartLabel("New Chart");
+
+        // Refresh list + apply the new chart immediately
+        await refreshChartsList(currentUser.id);
+        if (data) applyChart(data as ChartRow);
+
+        setCreateBusy(false);
+    }
+
+    useEffect(() => {
+        if (appPage !== "charts") return;
+        if (!currentUser?.id) return;
+        void refreshChartsList(currentUser.id);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [appPage, currentUser?.id]);
+
+
+
     const loadChartForUser = async (userId: string) => {
         const supabase = supabaseBrowser();
 
@@ -641,7 +935,7 @@ export default function Home() {
         if (!s) return;
 
         setSidebarExpanded(s.sidebarExpanded);
-        setIsUserPanelOpen(s.isUserPanelOpen);
+
 
         setArcCap(s.arcCap);
         setGapPxRound(s.gapPxRound);
@@ -672,7 +966,7 @@ export default function Home() {
             showCalendar,
             ringLayout,
             sidebarExpanded,
-            isUserPanelOpen,
+
         };
         safeWriteSession(s);
     }, [
@@ -685,7 +979,7 @@ export default function Home() {
         showCalendar,
         ringLayout,
         sidebarExpanded,
-        isUserPanelOpen,
+
     ]);
 
     useEffect(() => {
@@ -806,15 +1100,37 @@ export default function Home() {
 
 
     return (
-        <div className="min-h-screen">
-            <div className="flex">
-                {/* Left shell */}
-                <div className="w-[56px] shrink-0">
+        <div className="h-screen w-full overflow-hidden">
+            <div
+                className={[
+                    "h-full grid",
+                    rightIsDragging ? "" : "transition-[grid-template-columns] duration-200 ease-out",
+                ].join(" ")}
+                style={{
+                    gridTemplateColumns: [
+                        "56px",
+                        sidebarExpanded ? `${leftW}px` : "0px",
+                        "minmax(0, 1fr)",
+                        isRightSidebarOpen ? `${rightW}px` : `${RIGHT_SLIVER}px`,
+                    ].join(" "),
+                }}
+            >
+
+                {/* 1) Left shell */}
+                <div className="h-full">
                     <AppSidebar
                         active={appPage}
+                        panelMode={leftPanelMode}
                         onSelect={(p) => {
-                            setAppPage(p);
-                            // auto-expand when entering Transits (per your request)
+                            if (p === "settings") {
+                                setSidebarExpanded(true);
+                                setLeftPanelMode("settings");
+                                return;
+                            }
+
+                            setAppPage(p as AppPage);
+                            setLeftPanelMode(p as AppPage);
+
                             if (p === "transits") setSidebarExpanded(true);
                         }}
                         isExpanded={sidebarExpanded}
@@ -822,13 +1138,11 @@ export default function Home() {
                     />
                 </div>
 
-                {/* Main area */}
-                <div className="flex-1 relative min-h-screen">
-
-                    {/* Left sidebar expansion panel (one panel; content switches by appPage) */}
+                {/* 2) Left expanded column */}
+                <div className="h-full overflow-hidden">
                     {sidebarExpanded ? (
                         <LeftExpandedPanel
-                            appPage={appPage}
+                            panelMode={leftPanelMode}
                             year={year}
                             setYear={setYear}
                             nav={nav}
@@ -857,81 +1171,200 @@ export default function Home() {
                             trackerRings={trackerRings}
                             addTrackerRing={addTrackerRing}
                             removeTrackerRing={removeTrackerRing}
+                            userChart={userChart}
+                            selectedInfo={selectedInfo}
+                            onUserChartUploaded={onUserChartUploaded}
+                            onJournalSaved={() => setJournalReloadKey((k) => k + 1)}
                         />
                     ) : null}
+                </div>
 
+                {/* 3) Center column (the product) */}
+                <div className="h-full overflow-y-auto relative">
 
-                    {/* If Transits: render mandala + side controls */}
+                    {/* Transits */}
                     {appPage === "transits" ? (
-                        <>
-                            {/* Middle scroll column */}
-                            <div className="h-screen overflow-y-auto">
-                                <div className="pt-6 pb-24 flex flex-col items-center">
-                                    <MandalaSvg />
-                                    <MandalaClient
-                                        key={currentUser?.id ?? "anon"}
-                                        year={year}
-                                        visiblePlanets={visiblePlanets}
-                                        onHover={setHoverInfo}
-                                        onSelect={setSelectedInfo}
-                                        selected={selectedInfo}
-                                        arcCap={arcCap}
-                                        ringLayout={ringLayout}
-                                        showCalendar={showCalendar}
-                                        userChart={userChart}
-                                        gapPx={{ round: gapPxRound, butt: gapPxButt }}
-                                        nav={nav}
-                                        onNavigate={handleNavigate}
-                                        yearReloadKey={yearReloadKey}
-                                        yearReloadMode={yearReloadMode}
-                                        onYearReloadConsumed={() => setYearReloadMode("normal")}
-                                    />
+                        <div className="pt-6 pb-24 flex flex-col items-center">
+                            <MandalaSvg />
+                            <MandalaClient
+                                key={currentUser?.id ?? "anon"}
+                                year={year}
+                                visiblePlanets={visiblePlanets}
+                                onHover={setHoverInfo}
+                                onSelect={setSelectedInfo}
+                                selected={selectedInfo}
+                                arcCap={arcCap}
+                                ringLayout={ringLayout}
+                                showCalendar={showCalendar}
+                                userChart={userChart}
+                                gapPx={{ round: gapPxRound, butt: gapPxButt }}
+                                nav={nav}
+                                onNavigate={handleNavigate}
+                                yearReloadKey={yearReloadKey}
+                                yearReloadMode={yearReloadMode}
+                                onYearReloadConsumed={() => setYearReloadMode("normal")}
+                            />
 
-                                    {/* Bodygraph goes BELOW mandala (scrolls with column) */}
-                                    <div className="mt-8 w-full flex justify-center">
-                                        <div className="w-[860px] max-w-[calc(100vw-2rem)]">
-                                            <UserChartVisual key={currentUser?.id ?? "anon"} userChart={userChart} />
-                                        </div>
+                            {/* Bodygraph below mandala */}
+                            <div className="mt-8 w-full flex justify-center">
+                                <div className="w-[860px] max-w-[calc(100vw-2rem)]">
+                                    <UserChartVisual key={currentUser?.id ?? "anon"} userChart={userChart} />
+                                </div>
+                            </div>
+
+                            {/* Floating Journal Composer (sticky, centered, ChatGPT-style) */}
+                            <div className="sticky bottom-6 w-full flex justify-center pointer-events-none">
+                                <div className="w-[860px] max-w-[calc(100vw-2rem)] pointer-events-auto">
+                                    <div className="relative rounded-2xl border border-white/12 bg-black/70 backdrop-blur-md shadow-lg">
+                                        <textarea
+                                            ref={journalTaRef}
+                                            value={journalDraft}
+                                            onChange={(e) => setJournalDraft(e.target.value)}
+                                            placeholder="Write a journal entry..."
+                                            className="w-full resize-none rounded-2xl bg-transparent px-4 py-3 pr-12 text-sm text-white placeholder:text-white/35 outline-none"
+                                            style={{ minHeight: JOURNAL_MIN_H, maxHeight: JOURNAL_MAX_H }}
+                                            onKeyDown={(e) => {
+                                                // Enter sends, Shift+Enter newline (ChatGPT-ish)
+                                                if (e.key === "Enter" && !e.shiftKey) {
+                                                    e.preventDefault();
+                                                    void sendJournalEntry();
+                                                }
+                                            }}
+                                        />
+
+                                        <button
+                                            onClick={() => void sendJournalEntry()}
+                                            disabled={journalSending || !journalDraft.trim()}
+                                            className="absolute right-2 bottom-2 h-9 w-9 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 disabled:opacity-40 disabled:hover:bg-white/10 flex items-center justify-center"
+                                            aria-label="Send entry"
+                                            title="Send"
+                                        >
+                                            {/* simple arrow icon */}
+                                            <span className="text-white/90 text-base">➤</span>
+                                        </button>
                                     </div>
+                                    {journalError ? (
+                                        <div className="mt-1 text-xs text-red-300 px-2">
+                                            {journalError}
+                                        </div>
+                                    ) : null}
 
                                 </div>
                             </div>
 
-                            {/* Right sidebar toggle tab (always visible) */}
-                            <button
-                                className="fixed right-0 top-1/2 -translate-y-1/2 z-50 rounded-l-lg bg-black/60 border border-white/15 px-3 py-2 text-xs text-white/80 hover:text-white hover:bg-black/75"
-                                onClick={() => setIsRightSidebarOpen((v) => !v)}
-                                aria-label={isRightSidebarOpen ? "Hide sidebar" : "Show sidebar"}
-                            >
-                                {isRightSidebarOpen ? "Hide" : "Show"}
-                            </button>
 
-                            {/* Right sidebar (conditionally visible) */}
-                            {isRightSidebarOpen ? (
-                                <RightSidebar
-                                    hovered={hoverInfo}
-                                    selected={selectedInfo}
-                                    clearSelected={() => setSelectedInfo(null)}
-                                />
-                            ) : null}
-
-
-                            <UserChartPanel
-                                userChart={userChart}
-                                onUserChartUploaded={onUserChartUploaded}
-                                onResetUserCache={resetUserCache}
-                                isOpen={isUserPanelOpen}
-                                onToggleOpen={() => setIsUserPanelOpen((v) => !v)}
-                                year={year}
-                                selected={selectedInfo}
-                                onJournalSaved={() => setJournalReloadKey((k) => k + 1)}
-                            />
-
-
-                        </>
+                        </div>
                     ) : null}
 
-                    {/* Journal page */}
+                    {/* Charts */}
+                    {appPage === "charts" ? (
+                        <div className="p-6 max-w-3xl">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="text-xl font-semibold">Charts</div>
+
+                                <button
+                                    className="rounded-md bg-white/10 hover:bg-white/15 border border-white/15 px-4 py-2 text-sm disabled:opacity-50"
+                                    onClick={() => {
+                                        setCreateError(null);
+                                        setIsCreateOpen((v) => !v);
+                                    }}
+                                    disabled={!currentUser}
+                                    title={!currentUser ? "Sign in to create charts" : "Create a new chart"}
+                                >
+                                    Create New
+                                </button>
+                            </div>
+
+                            {!currentUser ? (
+                                <div className="text-sm text-white/60">
+                                    Sign in to view and create charts.
+                                </div>
+                            ) : null}
+
+                            {isCreateOpen && currentUser ? (
+                                <div className="mb-6 rounded-xl border border-white/10 bg-white/5 p-4">
+                                    <div className="text-sm font-semibold mb-3">New chart</div>
+
+                                    <label className="block text-xs text-white/60 mb-1">Label</label>
+                                    <input
+                                        value={newChartLabel}
+                                        onChange={(e) => setNewChartLabel(e.target.value)}
+                                        className="w-full rounded-md bg-black/30 border border-white/10 px-3 py-2 text-sm text-white mb-3"
+                                    />
+
+                                    <label className="block text-xs text-white/60 mb-1">Chart JSON (payload)</label>
+                                    <textarea
+                                        value={newChartJson}
+                                        onChange={(e) => setNewChartJson(e.target.value)}
+                                        rows={8}
+                                        placeholder='Paste payload JSON here...'
+                                        className="w-full rounded-md bg-black/30 border border-white/10 px-3 py-2 text-sm text-white font-mono"
+                                    />
+
+                                    {createError ? <div className="text-sm text-red-300 mt-2">{createError}</div> : null}
+
+                                    <div className="mt-3 flex gap-2">
+                                        <button
+                                            className="rounded-md bg-white/10 hover:bg-white/15 border border-white/15 px-4 py-2 text-sm disabled:opacity-50"
+                                            onClick={createChartFromJson}
+                                            disabled={createBusy || !newChartJson.trim()}
+                                        >
+                                            {createBusy ? "Creating..." : "Create"}
+                                        </button>
+
+                                        <button
+                                            className="rounded-md bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 text-sm text-white/70"
+                                            onClick={() => setIsCreateOpen(false)}
+                                            disabled={createBusy}
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+
+                                    <div className="text-xs text-white/40 mt-2">
+                                        (We’ll move JSON paste into Settings later.)
+                                    </div>
+                                </div>
+                            ) : null}
+
+                            {chartsLoading ? <div className="text-sm text-white/60">Loading…</div> : null}
+                            {chartsError ? <div className="text-sm text-red-300">{chartsError}</div> : null}
+
+                            {!chartsLoading && currentUser && charts.length === 0 ? (
+                                <div className="text-sm text-white/60">No charts yet.</div>
+                            ) : null}
+
+                            <div className="space-y-2">
+                                {charts.map((c) => {
+                                    const isActive = c.id === activeChartId;
+                                    return (
+                                        <button
+                                            key={c.id}
+                                            onClick={() => applyChart(c)}
+                                            className={[
+                                                "w-full text-left rounded-xl border px-4 py-3",
+                                                isActive ? "bg-white/10 border-white/20" : "bg-white/5 hover:bg-white/10 border-white/10",
+                                            ].join(" ")}
+                                        >
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <div className="text-sm font-semibold truncate">{c.label ?? "Untitled"}</div>
+                                                    <div className="text-xs text-white/50 truncate">{c.id}</div>
+                                                </div>
+
+                                                <div className="text-xs text-white/40">
+                                                    {c.updated_at ? new Date(c.updated_at).toLocaleString() : ""}
+                                                </div>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ) : null}
+
+
+                    {/* Journal */}
                     {appPage === "journal" ? (
                         <div className="p-6">
                             <div className="text-xl font-semibold mb-4">Journal</div>
@@ -939,32 +1372,27 @@ export default function Home() {
                         </div>
                     ) : null}
 
-                    {/* Trackers page */}
+                    {/* Trackers */}
                     {appPage === "trackers" ? (
-                        <div className="h-screen overflow-y-auto">
-                            <div className="pt-6 pb-24 flex flex-col items-center">
-                                <TrackerMandalaSvg />
-                                <TrackerMandalaClient
-                                    rings={trackerRings}
-                                    year={year}
-                                    ringLayout={ringLayout}
-                                    focusInstanceId={trackerFocusId}
-                                    maxVisible={12}
-                                    fadeCount={4}
-                                    onRingClick={handleTrackerRingClick}
-                                />
+                        <div className="pt-6 pb-24 flex flex-col items-center">
+                            <TrackerMandalaSvg />
+                            <TrackerMandalaClient
+                                rings={trackerRings}
+                                year={year}
+                                ringLayout={ringLayout}
+                                focusInstanceId={trackerFocusId}
+                                maxVisible={12}
+                                fadeCount={4}
+                                onRingClick={handleTrackerRingClick}
+                            />
 
-
-
-                                <div className="mt-4 text-white/60 text-sm">
-                                    Add rings from the left expansion panel to see them mount here.
-                                </div>
+                            <div className="mt-4 text-white/60 text-sm">
+                                Add rings from the left expansion panel to see them mount here.
                             </div>
                         </div>
                     ) : null}
 
-
-                    {/* Account page */}
+                    {/* Account */}
                     {appPage === "account" ? (
                         <div className="p-6 max-w-md">
                             <div className="text-xl font-semibold mb-4">Account</div>
@@ -974,11 +1402,8 @@ export default function Home() {
                                     Signed in as <span className="text-white">{currentUser.email}</span>
                                 </div>
                             ) : (
-                                <div className="text-sm text-white/40 mb-3">
-                                    Not signed in
-                                </div>
+                                <div className="text-sm text-white/40 mb-3">Not signed in</div>
                             )}
-
 
                             <div className="space-y-3">
                                 <label className="block text-xs text-white/60">Email</label>
@@ -1009,16 +1434,50 @@ export default function Home() {
 
                                 {authMsg ? <div className="text-sm text-white/60">{authMsg}</div> : null}
 
-                                <div className="text-xs text-white/40 pt-2">
-                                    (Beta auth: magic link.)
-                                </div>
+                                <div className="text-xs text-white/40 pt-2">(Beta auth: magic link.)</div>
                             </div>
                         </div>
                     ) : null}
-
                 </div>
+
+                {/* 4) Right sidebar column */}
+                <div className="h-full overflow-hidden bg-black/30 border-l border-white/10 relative">
+                    {/* Full-height draggable edge */}
+                    <div
+                        onMouseDown={startRightResize}
+                        className="absolute left-0 top-0 h-full w-[14px] cursor-col-resize bg-white/5 hover:bg-white/10"
+                        title={isRightSidebarOpen ? "Drag to resize (snap closed)" : "Drag to open"}
+                        aria-label="Resize sidebar"
+                    />
+
+                    {/* Optional: a click target on the sliver to toggle */}
+                    {!isRightSidebarOpen ? (
+                        <button
+                            onClick={() => setIsRightSidebarOpen(true)}
+                            className="absolute left-0 top-1/2 -translate-y-1/2 h-10 w-[14px] bg-black/70 border border-white/15 rounded-r-md"
+                            title="Open info"
+                            aria-label="Open sidebar"
+                        />
+                    ) : null}
+
+                    {/* Only render content when there is space (prevents crushing) */}
+                    {isRightSidebarOpen && rightW >= RIGHT_RENDER_MIN ? (
+                        <div className="h-full pl-[14px]">
+                            <RightSidebar
+                                hovered={hoverInfo}
+                                selected={selectedInfo}
+                                clearSelected={() => setSelectedInfo(null)}
+                            />
+                        </div>
+                    ) : (
+                        // when open but small (during drag), keep it visually stable without content reflow
+                        isRightSidebarOpen ? <div className="h-full pl-[14px]" /> : null
+                    )}
+                </div>
+
             </div>
         </div>
     );
+
 
 }
