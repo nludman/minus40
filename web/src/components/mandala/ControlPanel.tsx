@@ -3,31 +3,49 @@
 import { BODY_ORDER } from "@/lib/mandala/constants";
 import { useState } from "react";
 
-
-
 type Props = {
   year: number;
   setYear: (y: number) => void;
   visiblePlanets: Record<string, boolean>;
   togglePlanet: (planet: string) => void;
   toggleGroup: (group: "Inner" | "Outer") => void;
+
   arcCap: "round" | "butt";
   setArcCap: (cap: "round" | "butt") => void;
+
   ringLayout: import("@/lib/mandala/ringLayout").RingLayoutKnobs;
   setRingLayout: (k: import("@/lib/mandala/ringLayout").RingLayoutKnobs) => void;
+
   showCalendar: boolean;
   setShowCalendar: (v: boolean) => void;
+
   resetYearCache?: () => void;
   resetUserCache?: () => void;
+
   gapPxRound: number;
   setGapPxRound: (v: number) => void;
   gapPxButt: number;
   setGapPxButt: (v: number) => void;
+
   variant?: "floating" | "embedded";
 
+  // --- Ask Mandala (optional; only used on Transits panel) ---
+  mandalaAiOn?: boolean;
+  setMandalaAiOn?: (v: boolean) => void;
+
+  mandalaQuery?: string;
+  setMandalaQuery?: (v: string) => void;
+
+  mandalaSearching?: boolean;
+  onMandalaSearch?: () => void;
+
+  highlightGate?: number | null;
+  clearHighlightGate?: () => void;
+
+  mandalaSearchOn?: boolean;
+  setMandalaSearchOn?: (v: boolean) => void;
 
 };
-
 
 export default function ControlPanel({
   year,
@@ -49,22 +67,29 @@ export default function ControlPanel({
   setGapPxButt,
   variant = "floating",
 
+  // Ask Mandala (optional)
+  mandalaAiOn,
+  setMandalaAiOn,
+  mandalaQuery,
+  setMandalaQuery,
+  mandalaSearching,
+  onMandalaSearch,
+  highlightGate,
+  clearHighlightGate,
 
+  mandalaSearchOn,
+  setMandalaSearchOn,
 }: Props) {
-
   const [panelOpen, setPanelOpen] = useState(true);
-  const [openYear, setOpenYear] = useState(true);
   const [openPlanets, setOpenPlanets] = useState(true);
-  const [openCaps, setOpenCaps] = useState(true);
-  const [openCalendar, setOpenCalendar] = useState(true);
-  const [openLayout, setOpenLayout] = useState(false);
-  const [openHover, setOpenHover] = useState(true);
-  const [openGaps, setOpenGaps] = useState(true); // for the new gap sliders block
   const [layoutLabOpen, setLayoutLabOpen] = useState(true);
 
-
-
   const isEmbedded = variant === "embedded";
+
+  const canAskMandala =
+    typeof setMandalaAiOn === "function" &&
+    typeof setMandalaSearchOn === "function";
+
 
   return (
     <div
@@ -84,20 +109,75 @@ export default function ControlPanel({
             className="text-xs opacity-80 hover:opacity-100 rounded-lg bg-white/10 px-2 py-1"
             onClick={() => setPanelOpen((v) => !v)}
             title="Collapse panel"
+            type="button"
           >
             {panelOpen ? "Hide" : "Show"}
           </button>
         ) : null}
-
-
       </div>
 
+      {/* Mandala Search (toggle lives here; input lives in journal box) */}
+      {canAskMandala ? (
+        <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-white/70">Mandala Search</div>
+
+            <button
+              type="button"
+              onClick={() => setMandalaSearchOn?.(!mandalaSearchOn)}
+              className="h-7 px-3 rounded-lg border text-[11px] bg-white/5 border-white/10 text-white/70 hover:bg-white/10"
+            >
+              {mandalaSearchOn ? "Search On" : "Search Off"}
+            </button>
+          </div>
+
+          <div className="mt-2 flex items-center justify-between">
+            <div className="text-[11px] text-white/60">AI parsing</div>
+
+            <button
+              type="button"
+              onClick={() => setMandalaAiOn?.(!mandalaAiOn)}
+              disabled={!mandalaSearchOn}
+              className={[
+                "h-7 px-3 rounded-lg border text-[11px]",
+                mandalaSearchOn
+                  ? "bg-white/5 border-white/10 text-white/70 hover:bg-white/10"
+                  : "bg-white/5 border-white/10 text-white/30 cursor-not-allowed",
+              ].join(" ")}
+              title={!mandalaSearchOn ? "Turn Search On first" : "Toggle AI"}
+            >
+              {mandalaAiOn ? "AI On" : "AI Off"}
+            </button>
+          </div>
+
+          {highlightGate ? (
+            <div className="mt-2 text-[11px] text-white/60">
+              Highlighting gate {highlightGate}.{" "}
+              <button
+                type="button"
+                className="underline text-white/70"
+                onClick={() => clearHighlightGate?.()}
+              >
+                Clear
+              </button>
+            </div>
+          ) : (
+            <div className="mt-2 text-[11px] text-white/40">
+              Type your query in the journal box and press Enter.
+            </div>
+          )}
+        </div>
+      ) : null}
+
+
+      {/* Year */}
       <div className="mt-4">
         <label className="text-xs opacity-70">Year</label>
         <div className="mt-2 flex items-center gap-2">
           <button
             className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20"
             onClick={() => setYear(year - 1)}
+            type="button"
           >
             −
           </button>
@@ -112,6 +192,7 @@ export default function ControlPanel({
           <button
             className="h-9 w-9 rounded-full bg-white/10 hover:bg-white/20"
             onClick={() => setYear(year + 1)}
+            type="button"
           >
             +
           </button>
@@ -122,13 +203,25 @@ export default function ControlPanel({
             onClick={() => resetYearCache?.()}
             className="h-9 w-full rounded-xl text-sm bg-white/10 text-white hover:bg-white/20"
             title="Forces the server to recompute the year segments and overwrite disk cache"
+            type="button"
           >
             Reset year cache
           </button>
-        </div>
 
+          {resetUserCache ? (
+            <button
+              onClick={() => resetUserCache?.()}
+              className="h-9 w-full rounded-xl text-sm bg-white/10 text-white hover:bg-white/20"
+              title="Clears local user chart cache"
+              type="button"
+            >
+              Reset user cache
+            </button>
+          ) : null}
+        </div>
       </div>
 
+      {/* Planets */}
       <div className="mt-4">
         <div className="flex items-center justify-between">
           <div className="text-xs opacity-70">Planets</div>
@@ -141,7 +234,7 @@ export default function ControlPanel({
           </button>
         </div>
 
-        {openPlanets && (
+        {openPlanets ? (
           <div className="mt-2">
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -182,10 +275,10 @@ export default function ControlPanel({
               })}
             </div>
           </div>
-        )}
+        ) : null}
       </div>
 
-
+      {/* Layout Lab */}
       <div className="mt-4 rounded-xl bg-white/5 p-3">
         <div className="flex items-center justify-between">
           <div className="text-xs text-white/70">Layout Lab</div>
@@ -193,6 +286,7 @@ export default function ControlPanel({
             className="text-[11px] text-white/60 hover:text-white/80 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 px-2 py-1"
             onClick={() => setLayoutLabOpen((v) => !v)}
             title={layoutLabOpen ? "Hide Layout Lab" : "Show Layout Lab"}
+            type="button"
           >
             {layoutLabOpen ? "Hide" : "Show"}
           </button>
@@ -211,9 +305,7 @@ export default function ControlPanel({
                   min={280}
                   max={460}
                   value={ringLayout.centerR ?? 391.25}
-                  onChange={(e) =>
-                    setRingLayout({ ...ringLayout, centerR: Number(e.target.value) })
-                  }
+                  onChange={(e) => setRingLayout({ ...ringLayout, centerR: Number(e.target.value) })}
                   className="w-full"
                 />
               </div>
@@ -228,9 +320,7 @@ export default function ControlPanel({
                   min={60}
                   max={260}
                   value={ringLayout.band ?? 120}
-                  onChange={(e) =>
-                    setRingLayout({ ...ringLayout, band: Number(e.target.value) })
-                  }
+                  onChange={(e) => setRingLayout({ ...ringLayout, band: Number(e.target.value) })}
                   className="w-full"
                 />
               </div>
@@ -246,12 +336,11 @@ export default function ControlPanel({
                   max={0.8}
                   step={0.01}
                   value={ringLayout.gapRatio ?? 0.35}
-                  onChange={(e) =>
-                    setRingLayout({ ...ringLayout, gapRatio: Number(e.target.value) })
-                  }
+                  onChange={(e) => setRingLayout({ ...ringLayout, gapRatio: Number(e.target.value) })}
                   className="w-full"
                 />
               </div>
+
               <div className="mt-4 rounded-xl bg-white/5 p-3">
                 <div className="text-xs opacity-70">Segment gaps</div>
 
@@ -289,8 +378,8 @@ export default function ControlPanel({
                   </div>
                 </div>
               </div>
-
             </div>
+
             <div className="mt-4">
               <div className="text-xs opacity-70">Segment caps</div>
 
@@ -299,8 +388,11 @@ export default function ControlPanel({
                   onClick={() => setArcCap("butt")}
                   className={[
                     "h-9 rounded-xl text-sm",
-                    arcCap === "butt" ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/20",
+                    arcCap === "butt"
+                      ? "bg-white text-black"
+                      : "bg-white/10 text-white hover:bg-white/20",
                   ].join(" ")}
+                  type="button"
                 >
                   Butt
                 </button>
@@ -309,34 +401,13 @@ export default function ControlPanel({
                   onClick={() => setArcCap("round")}
                   className={[
                     "h-9 rounded-xl text-sm",
-                    arcCap === "round" ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/20",
+                    arcCap === "round"
+                      ? "bg-white text-black"
+                      : "bg-white/10 text-white hover:bg-white/20",
                   ].join(" ")}
-                >
-                  Round
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-3 rounded-md border border-white/10 bg-white/5 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold">Show inactive spans</div>
-                  <div className="text-xs text-white/60">
-                    Draws a faint baseline ring for inactive time.
-                  </div>
-                </div>
-
-                <button
-                  className={`rounded-md px-3 py-1 text-xs border ${ringLayout.showInactive
-                      ? "bg-white/15 border-white/20 text-white"
-                      : "bg-black/20 border-white/10 text-white/70 hover:text-white"
-                    }`}
-                  onClick={() =>
-                    setRingLayout({ ...ringLayout, showInactive: !ringLayout.showInactive })
-                  }
                   type="button"
                 >
-                  {ringLayout.showInactive ? "On" : "Off"}
+                  Round
                 </button>
               </div>
             </div>
@@ -346,13 +417,15 @@ export default function ControlPanel({
                 onClick={() => setShowCalendar(!showCalendar)}
                 className={[
                   "h-9 w-full rounded-xl text-sm",
-                  showCalendar ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/20",
+                  showCalendar
+                    ? "bg-white text-black"
+                    : "bg-white/10 text-white hover:bg-white/20",
                 ].join(" ")}
+                type="button"
               >
                 {showCalendar ? "Calendar overlay: On" : "Calendar overlay: Off"}
               </button>
             </div>
-
           </>
         ) : null}
       </div>

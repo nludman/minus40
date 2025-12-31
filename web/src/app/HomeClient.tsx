@@ -73,6 +73,21 @@ type LeftExpandedPanelProps = {
     onUserChartUploaded: (payload: UserChartPayload) => void;
     onJournalSaved: () => void;
 
+    mandalaAiOn: boolean;
+    setMandalaAiOn: (v: boolean) => void;
+
+    mandalaQuery: string;
+    setMandalaQuery: (v: string) => void;
+
+    mandalaSearching: boolean;
+    setMandalaSearching: (v: boolean) => void;
+
+    highlightGate: number | null;
+    setHighlightGate: (v: number | null) => void;
+
+    mandalaSearchOn: boolean;
+    setMandalaSearchOn: (v: boolean) => void;
+
 };
 
 function LeftExpandedPanel(props: LeftExpandedPanelProps) {
@@ -108,7 +123,72 @@ function LeftExpandedPanel(props: LeftExpandedPanelProps) {
         trackerRings,
         addTrackerRing,
         removeTrackerRing,
+
+        mandalaAiOn,
+        setMandalaAiOn,
+
+        mandalaQuery,
+        setMandalaQuery,
+
+        mandalaSearching,
+        setMandalaSearching,
+
+        highlightGate,
+        setHighlightGate,
+
+        mandalaSearchOn,
+        setMandalaSearchOn,
+
     } = props;
+
+    const onMandalaSearch = async () => {
+        const q = mandalaQuery.trim();
+        if (!q) return;
+
+        // AI off = cheap parse
+        if (!mandalaAiOn) {
+            const m =
+                q.match(/gate\s*#?\s*(\d{1,2})/i) ||
+                q.match(/\b(\d{1,2})\b/);
+            const gate = m ? Number(m[1]) : null;
+            setHighlightGate(gate && gate >= 1 && gate <= 64 ? gate : null);
+            return;
+        }
+
+        // ✅ AI is ON, but if query is simple, still do offline parse (save tokens)
+        const simple =
+            /^\s*gate\s*#?\s*\d{1,2}\s*$/i.test(q) ||
+            /^\s*\d{1,2}\s*$/.test(q) ||
+            /^\s*gate#?\d{1,2}\s*$/i.test(q);
+
+        if (simple) {
+            const m =
+                q.match(/gate\s*#?\s*(\d{1,2})/i) ||
+                q.match(/\b(\d{1,2})\b/);
+            const gate = m ? Number(m[1]) : null;
+            setHighlightGate(gate && gate >= 1 && gate <= 64 ? gate : null);
+            return;
+        }
+
+        setMandalaSearching(true);
+        try {
+            const res = await fetch("/api/mandala/query", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ q }),
+            });
+            if (!res.ok) return;
+
+            const data = await res.json();
+            if (data?.action === "highlight_gate" && typeof data?.gate === "number") {
+                setHighlightGate(data.gate);
+            }
+        } finally {
+            setMandalaSearching(false);
+        }
+    };
+
+
 
     return (
         <div className="fixed left-[56px] top-0 h-screen w-[340px] bg-black/30 border-r border-white/10 p-3 overflow-auto z-40">
@@ -138,7 +218,22 @@ function LeftExpandedPanel(props: LeftExpandedPanelProps) {
                         setGapPxRound={setGapPxRound}
                         gapPxButt={gapPxButt}
                         setGapPxButt={setGapPxButt}
+                        mandalaAiOn={mandalaAiOn}
+                        setMandalaAiOn={setMandalaAiOn}
+                        mandalaQuery={mandalaQuery}
+                        setMandalaQuery={setMandalaQuery}
+                        mandalaSearching={mandalaSearching}
+                        onMandalaSearch={onMandalaSearch}
+                        highlightGate={highlightGate}
+                        clearHighlightGate={() => setHighlightGate(null)}
+                        mandalaSearchOn={mandalaSearchOn}
+                        setMandalaSearchOn={setMandalaSearchOn}
+
+
                     />
+
+
+
                 </>
             ) : panelMode === "trackers" ? (
                 <>
@@ -364,6 +459,7 @@ export default function Home() {
         } catch { }
     }
 
+
     // =========================
     // Floating Journal Composer (Phase 1: UI only)
     // =========================
@@ -374,9 +470,14 @@ export default function Home() {
     const journalBoxRef = useRef<HTMLDivElement | null>(null);
     const [journalBoxH, setJournalBoxH] = useState(0);
 
+    // AI assist (Phase 2)
+    const [journalAiOn, setJournalAiOn] = useState(false);
+    const [journalAiReflection, setJournalAiReflection] = useState<string | null>(null);
+    const [journalAiMeta, setJournalAiMeta] = useState<any>(null);
+
+
     // matches your sticky bottom offset (bottom-12 = 48px)
     const JOURNAL_BOTTOM_OFFSET_PX = 48;
-
 
     const journalTaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -402,6 +503,83 @@ export default function Home() {
     }, [journalDraft, journalSending]);
 
 
+    async function searchMandalaFromJournal() {
+        const q = journalDraft.trim();
+        if (!q) return;
+
+        // If AI search is off, do local parse (cheap)
+        if (!mandalaAiOn) {
+            const m =
+                q.match(/gate\s*#?\s*(\d{1,2})/i) ||
+                q.match(/\b(\d{1,2})\b/);
+
+            const gate = m ? Number(m[1]) : null;
+            const ok = gate && gate >= 1 && gate <= 64;
+            setHighlightGate(ok ? gate : null);
+            if (ok) setJournalDraft("");
+            return;
+
+        }
+
+        // AI-on but still cheap for simple queries
+        const simple =
+            /^\s*gate\s*#?\s*\d{1,2}\s*$/i.test(q) ||
+            /^\s*\d{1,2}\s*$/.test(q) ||
+            /^\s*gate#?\d{1,2}\s*$/i.test(q);
+
+        if (simple) {
+            const m =
+                q.match(/gate\s*#?\s*(\d{1,2})/i) ||
+                q.match(/\b(\d{1,2})\b/);
+
+            const gate = m ? Number(m[1]) : null;
+            const ok = gate && gate >= 1 && gate <= 64;
+            setHighlightGate(ok ? gate : null);
+            if (ok) setJournalDraft("");
+            return;
+
+        }
+
+        // Otherwise: AI route (complex query)
+        setMandalaSearching(true);
+        try {
+            const res = await fetch("/api/mandala/query", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ q }),
+            });
+            if (!res.ok) return;
+
+            const data = await res.json();
+            if (data?.action === "highlight_gate" && typeof data?.gate === "number") {
+                setHighlightGate(data.gate);
+                setJournalDraft("");
+            }
+        } finally {
+            setMandalaSearching(false);
+        }
+
+
+        setMandalaSearching(true);
+        try {
+            const res = await fetch("/api/mandala/query", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ q }),
+            });
+            if (!res.ok) return;
+
+            const data = await res.json();
+            if (data?.action === "highlight_gate" && typeof data?.gate === "number") {
+                setHighlightGate(data.gate);
+                setJournalDraft("");
+            }
+        } finally {
+            setMandalaSearching(false);
+        }
+    }
+
+
     async function sendJournalEntry() {
         const text = journalDraft.trim();
         if (!text) return;
@@ -423,17 +601,69 @@ export default function Home() {
         try {
             const supabase = supabaseBrowser();
 
+            // 1) Optional AI reflect
+            let aiReflection: string | null = null;
+            let aiMeta: any = null;
+
+            if (journalAiOn) {
+                try {
+                    const res = await fetch("/api/journal/reflect", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            text,
+                            nav,
+                            selected: selectedInfo,
+                            year,
+                            appPage,
+                        }),
+                    });
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        aiReflection = typeof data?.reflection === "string" ? data.reflection : null;
+                        aiMeta = data?.metadata ?? null;
+
+                        setJournalAiReflection(aiReflection);
+                        setJournalAiMeta(aiMeta);
+                    } else {
+                        // AI failure should NOT block saving
+                        setJournalAiReflection(null);
+                        setJournalAiMeta(null);
+                    }
+                } catch {
+                    // AI failure should NOT block saving
+                    setJournalAiReflection(null);
+                    setJournalAiMeta(null);
+                }
+            } else {
+                // If AI is off, clear the reflection display (so it “goes back to simply recording entries”)
+                setJournalAiReflection(null);
+                setJournalAiMeta(null);
+            }
+
+            // 2) Save journal entry (always)
             const { error } = await supabase.from("journal_entries").insert({
                 owner_id: currentUser.id,
-                chart_id: activeChartId,   // nullable; ties entry to current chart if selected
+                chart_id: activeChartId,
                 content: text,
-                nav: nav,                  // snapshot of current view/span/month
-                selected: selectedInfo,    // snapshot of selected segment/gate/channel
+                nav: nav,
+                selected: selectedInfo,
                 meta: {
                     year,
                     appPage: appPage,
+                    ai: journalAiOn
+                        ? {
+                            enabled: true,
+                            reflection: aiReflection,
+                            metadata: aiMeta,
+                            // versioning so we can evolve prompts safely later
+                            v: 1,
+                        }
+                        : { enabled: false, v: 1 },
                 },
             });
+
 
             if (error) {
                 setJournalError("Couldn’t save entry. Try again.");
@@ -623,6 +853,15 @@ export default function Home() {
 
         router.push(`/?${p.toString()}`);
     }
+
+
+    // Mandala Search (AI action lane)
+    const [mandalaAiOn, setMandalaAiOn] = useState(false);
+    const [mandalaQuery, setMandalaQuery] = useState("");
+    const [mandalaSearching, setMandalaSearching] = useState(false);
+    const [highlightGate, setHighlightGate] = useState<number | null>(null);
+    // Mandala search mode (journal box doubles as query input)
+    const [mandalaSearchOn, setMandalaSearchOn] = useState(false);
 
 
     // =========================
@@ -1190,6 +1429,18 @@ export default function Home() {
                             selectedInfo={selectedInfo}
                             onUserChartUploaded={onUserChartUploaded}
                             onJournalSaved={() => setJournalReloadKey((k) => k + 1)}
+
+                            mandalaAiOn={mandalaAiOn}
+                            setMandalaAiOn={setMandalaAiOn}
+                            mandalaQuery={mandalaQuery}
+                            setMandalaQuery={setMandalaQuery}
+                            mandalaSearching={mandalaSearching}
+                            setMandalaSearching={setMandalaSearching}
+                            highlightGate={highlightGate}
+                            setHighlightGate={setHighlightGate}
+                            mandalaSearchOn={mandalaSearchOn}
+                            setMandalaSearchOn={setMandalaSearchOn}
+
                         />
                     ) : null}
                 </div>
@@ -1226,6 +1477,8 @@ export default function Home() {
                                 yearReloadKey={yearReloadKey}
                                 yearReloadMode={yearReloadMode}
                                 onYearReloadConsumed={() => setYearReloadMode("normal")}
+                                highlightGate={highlightGate}
+
                             />
 
                             {/* Bodygraph below mandala */}
@@ -1270,31 +1523,83 @@ export default function Home() {
                                                     ref={journalBoxRef}
                                                     className="relative rounded-3xl border border-white/12 bg-black/70 backdrop-blur-md shadow-lg"
                                                 >
-                                                    <textarea
-                                                        ref={journalTaRef}
-                                                        value={journalDraft}
-                                                        onChange={(e) => setJournalDraft(e.target.value)}
-                                                        placeholder="Write a journal entry..."
-                                                        className="w-full resize-none rounded-2xl bg-transparent px-4 py-2.5 pr-12 text-sm text-white placeholder:text-white/35 outline-none"
-                                                        style={{ minHeight: JOURNAL_MIN_H, maxHeight: JOURNAL_MAX_H }}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === "Enter" && !e.shiftKey) {
-                                                                e.preventDefault();
-                                                                void sendJournalEntry();
-                                                            }
-                                                        }}
-                                                    />
+                                                    {/* Header */}
+                                                    <div className="mt-2 flex items-center justify-between gap-2 px-3">
+                                                        <div className="text-[11px] text-white/60">AI reflection</div>
 
-                                                    <button
-                                                        onClick={() => void sendJournalEntry()}
-                                                        disabled={journalSending || !journalDraft.trim()}
-                                                        className="absolute right-2 bottom-2 h-9 w-9 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 disabled:opacity-40 disabled:hover:bg-white/10 flex items-center justify-center"
-                                                        aria-label="Send entry"
-                                                        title="Send"
-                                                    >
-                                                        <span className="text-white/90 text-base">➤</span>
-                                                    </button>
+                                                        <button
+                                                            onClick={() => setJournalAiOn((v) => !v)}
+                                                            className={[
+                                                                "h-7 px-3 rounded-lg border text-[12px]",
+                                                                journalAiOn
+                                                                    ? "bg-white/15 border-white/20 text-white"
+                                                                    : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10",
+                                                            ].join(" ")}
+                                                            title="Toggle AI assist"
+                                                            type="button"
+                                                        >
+                                                            {journalAiOn ? "On" : "Off"}
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Reflection */}
+                                                    {journalAiOn && journalAiReflection ? (
+                                                        <div className="mt-2 mx-3 rounded-xl bg-white/5 border border-white/10 p-2">
+                                                            <div className="text-[11px] text-white/50 mb-1">Reflection</div>
+                                                            <div className="text-xs text-white/80 whitespace-pre-wrap">
+                                                                {journalAiReflection}
+                                                            </div>
+                                                        </div>
+                                                    ) : null}
+
+                                                    {/* ===== Entry Field Shell (electric outline lives HERE) ===== */}
+                                                    <div className="relative mt-2 mx-2 mb-2 rounded-2xl overflow-hidden">
+                                                        {mandalaSearchOn ? (
+                                                            <div className="pointer-events-none absolute inset-0 rounded-2xl">
+
+                                                                <div className="absolute inset-[1px] rounded-2xl border-2 border-cyan-300/90" />
+                                                            </div>
+                                                        ) : null}
+
+                                                        {/* Input surface */}
+                                                        <div className="relative rounded-2xl border border-white/10 bg-black/20">
+                                                            <textarea
+                                                                ref={journalTaRef}
+                                                                value={journalDraft}
+                                                                onChange={(e) => setJournalDraft(e.target.value)}
+                                                                placeholder={
+                                                                    mandalaSearchOn
+                                                                        ? 'Search mandala… e.g. "gate 55"'
+                                                                        : "Write a journal entry..."
+                                                                }
+                                                                className="w-full resize-none rounded-2xl bg-transparent px-4 py-2.5 pr-12 text-sm text-white placeholder:text-white/35 outline-none"
+                                                                style={{ minHeight: JOURNAL_MIN_H, maxHeight: JOURNAL_MAX_H }}
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === "Enter" && !e.shiftKey) {
+                                                                        e.preventDefault();
+                                                                        if (mandalaSearchOn) void searchMandalaFromJournal();
+                                                                        else void sendJournalEntry();
+                                                                    }
+                                                                }}
+                                                            />
+
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (mandalaSearchOn) void searchMandalaFromJournal();
+                                                                    else void sendJournalEntry();
+                                                                }}
+                                                                disabled={journalSending || mandalaSearching || !journalDraft.trim()}
+                                                                className="absolute right-2 bottom-2 h-9 w-9 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 disabled:opacity-40 disabled:hover:bg-white/10 flex items-center justify-center"
+                                                                aria-label={mandalaSearchOn ? "Search mandala" : "Send entry"}
+                                                                title={mandalaSearchOn ? "Search" : "Send"}
+                                                                type="button"
+                                                            >
+                                                                <span className="text-white/90 text-base">➤</span>
+                                                            </button>
+                                                        </div>
+                                                    </div>
                                                 </div>
+
 
 
                                             </div>

@@ -52,6 +52,8 @@ type MandalaClientProps = {
     m?: number;
     q?: number;
   }) => void;
+  highlightGate?: number | null;
+
 
 };
 
@@ -498,6 +500,7 @@ export default function MandalaClient({
   userChart,
   nav,
   onNavigate,
+  highlightGate,
 
 
 }: MandalaClientProps) {
@@ -538,6 +541,71 @@ export default function MandalaClient({
     updateVisibleOnly();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userChart]);
+
+  useEffect(() => {
+    const svg = document.querySelector("#MandalaSvg") as SVGSVGElement | null;
+    if (!svg) return;
+
+    const gate = highlightGate ?? null;
+
+    // Run AFTER the ring DOM is rebuilt (double rAF = very reliable)
+    let raf1 = 0;
+    let raf2 = 0;
+
+    const apply = () => {
+      // clear previous highlights
+      svg.querySelectorAll(".seg-outline[data-ai-hl='1']").forEach((el) => {
+        const p = el as SVGPathElement;
+        p.removeAttribute("data-ai-hl");
+        p.style.stroke = "";
+        p.style.filter = "";
+      });
+
+      if (!gate) return;
+
+      const electricBlue = "rgba(0, 200, 255, 0.95)";
+      const hits = svg.querySelectorAll(
+        `.seg-wrap[data-gate='${gate}'] .seg-outline`
+      );
+
+      hits.forEach((el) => {
+        const p = el as SVGPathElement;
+
+        // mark as AI-highlighted
+        p.setAttribute("data-ai-hl", "1");
+
+        // === COLOR ===
+        p.style.stroke = "rgba(0, 157, 255, 1)"; // full opacity, no alpha
+        p.style.opacity = "1";
+
+        // === STROKE WEIGHT (optional but nice) ===
+        const baseW = p.getBBox().height; // not perfect, but stable enough
+        const currentW = Number(p.getAttribute("stroke-width")) || 0;
+
+        if (currentW > 0) {
+          // slightly thinner than base outline
+          p.style.strokeWidth = String(Math.max(1, currentW * 0.8));
+        }
+
+        // === GLOW (tight + intentional) ===
+        //p.style.filter = "drop-shadow(0 0 3px rgba(0,200,255,0.8))";
+        p.style.filter = "none";
+      });
+
+    };
+
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(apply);
+    });
+
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+    // IMPORTANT: depend on redraw-driving props too
+  }, [highlightGate, year, arcCap, showCalendar, yearReloadKey, visiblePlanets, ringLayout, nav]);
+
+
 
 
 
