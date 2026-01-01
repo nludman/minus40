@@ -1,6 +1,7 @@
 "use client";
 
 import type { HoverInfo } from "@/lib/mandala/constants";
+import type { UserChartPayload } from "@/lib/userChartCache";
 
 type Info = Exclude<HoverInfo, null>;
 
@@ -8,6 +9,10 @@ type Props = {
   hovered: HoverInfo;   // HoverInfo already includes null
   selected: HoverInfo;  // HoverInfo already includes null
   clearSelected: () => void;
+  mode?: "transits" | "charts";
+  userChart?: UserChartPayload | null;
+  activeChartLabel?: string | null;
+
 };
 
 function findSegment(info: Info) {
@@ -22,11 +27,52 @@ function findSegment(info: Info) {
   );
 }
 
-export default function RightSidebar({ hovered, selected, clearSelected }: Props) {
+function Row({ label, value }: { label: string; value: any }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="text-xs text-white/60">{label}</div>
+      <div className="text-sm text-white/90 truncate">{value ? String(value) : "—"}</div>
+    </div>
+  );
+}
+
+
+export default function RightSidebar({
+  hovered,
+  selected,
+  clearSelected,
+  mode = "transits",
+  userChart,
+  activeChartLabel,
+}: Props) {
   const info: HoverInfo = selected ?? hovered;
 
   // ✅ Hard guard so TS narrows info to Info (non-null)
   const seg = info ? findSegment(info) : null;
+
+  if (mode === "charts") {
+    const d: any = userChart?.data ?? null;
+
+    const type = d?.type ?? d?.hdType ?? null;
+    const profile = d?.profile ?? null;
+    const strategy = d?.strategy ?? null;
+    const authority = d?.authority ?? d?.innerAuthority ?? null;
+
+    return (
+      <div className="h-full w-full p-4 text-white overflow-y-auto">
+        <div className="text-sm font-semibold">Chart</div>
+
+        <div className="mt-3 rounded-xl bg-white/5 border border-white/10 p-3 space-y-2">
+          <Row label="Chart Name" value={activeChartLabel ?? userChart?.label ?? "—"} />
+          <Row label="Type" value={type} />
+          <Row label="Profile" value={profile} />
+          <Row label="Strategy" value={strategy} />
+          <Row label="Authority" value={authority} />
+        </div>
+      </div>
+    );
+  }
+
 
   return (
     <div className="h-full w-full bg-black/30 border-l border-white/10 p-4 text-white backdrop-blur overflow-y-auto">

@@ -82,3 +82,33 @@ export function generateBirthDataSkeleton(input: {
         },
     };
 }
+
+export async function generateChartFromInputs(input: {
+    label?: string;
+    date: string;     // YYYY-MM-DD
+    time: string;     // HH:MM
+    location: string; // optional text
+}): Promise<UserChartPayload> {
+    const local = new Date(`${input.date}T${input.time}:00`);
+    if (Number.isNaN(local.getTime())) throw new Error("Invalid birth date/time.");
+    const birth_utc = local.toISOString();
+
+    const res = await fetch("/api/user-chart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ birth_utc }),
+    });
+
+    if (!res.ok) throw new Error(await res.text());
+
+    const computed = await res.json();
+
+    // ✅ IMPORTANT: store computed at data root (same as UserChartPanel)
+    return {
+        version: 1,
+        label: input.label ?? "New Chart",
+        source: "generator",
+        data: computed,
+    };
+}
+

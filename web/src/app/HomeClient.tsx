@@ -8,6 +8,8 @@ import { MandalaClient, ControlPanel, MandalaSvg, RightSidebar } from "@/compone
 import UserChartPanel from "@/components/mandala/UserChartPanel";
 import UserChartVisual from "@/components/mandala/UserChartVisual";
 
+import { generateChartFromInputs } from "@/lib/chartGenerator";
+
 import { clearUserChart, loadUserChart, saveUserChart, type UserChartPayload } from "@/lib/userChartCache";
 import type { HoverInfo } from "@/lib/mandala/constants";
 import TransitJournalViews from "@/components/mandala/TransitJournalViews";
@@ -30,6 +32,12 @@ import { supabaseBrowser } from "@/lib/supabase/browser";
 type AppPage = "transits" | "charts" | "trackers" | "journal" | "account";
 type LeftPanelMode = AppPage | "settings";
 
+type ChartRow = {
+    id: string;
+    label: string | null;
+    updated_at: string | null;
+    payload: any;
+};
 
 type LeftExpandedPanelProps = {
     panelMode: LeftPanelMode;
@@ -88,6 +96,16 @@ type LeftExpandedPanelProps = {
     mandalaSearchOn: boolean;
     setMandalaSearchOn: (v: boolean) => void;
 
+    // charts props
+    charts: ChartRow[];
+    chartsLoading: boolean;
+    chartsError: string | null;
+    activeChartId: string | null;
+    applyChart: (row: ChartRow) => void;
+    deleteChartById: (chartId: string) => void;
+    openCreateChart: () => void;
+
+
 };
 
 function LeftExpandedPanel(props: LeftExpandedPanelProps) {
@@ -138,6 +156,15 @@ function LeftExpandedPanel(props: LeftExpandedPanelProps) {
 
         mandalaSearchOn,
         setMandalaSearchOn,
+
+        charts,
+        chartsLoading,
+        chartsError,
+        activeChartId,
+        applyChart,
+        deleteChartById,
+        openCreateChart,
+
 
     } = props;
 
@@ -235,6 +262,65 @@ function LeftExpandedPanel(props: LeftExpandedPanelProps) {
 
 
                 </>
+
+            ) : panelMode === "charts" ? (
+                <>
+                    <div className="flex items-center justify-between px-2 pb-2">
+                        <div className="text-xs text-white/60">Charts</div>
+
+                        <button
+                            className="rounded-md bg-white/10 hover:bg-white/15 border border-white/15 px-3 py-1.5 text-xs disabled:opacity-50"
+                            onClick={openCreateChart}
+                            type="button"
+                        >
+                            New
+                        </button>
+                    </div>
+
+                    {chartsLoading ? <div className="px-2 text-xs text-white/60">Loading…</div> : null}
+                    {chartsError ? <div className="px-2 text-xs text-red-300">{chartsError}</div> : null}
+
+                    <div className="mt-2 space-y-2">
+                        {charts.map((c) => {
+                            const isActive = c.id === activeChartId;
+
+                            return (
+                                <div
+                                    key={c.id}
+                                    className={[
+                                        "w-full rounded-xl border px-3 py-2 flex items-center justify-between gap-2",
+                                        isActive ? "bg-white/10 border-white/20" : "bg-white/5 hover:bg-white/10 border-white/10",
+                                    ].join(" ")}
+                                >
+                                    <button
+                                        onClick={() => applyChart(c)}
+                                        className="min-w-0 flex-1 text-left"
+                                        type="button"
+                                    >
+                                        <div className="text-sm font-semibold truncate">{c.label ?? "Untitled"}</div>
+                                        <div className="text-[11px] text-white/40 truncate">
+                                            {c.updated_at ? new Date(c.updated_at).toLocaleString() : ""}
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        className="shrink-0 rounded-md bg-red-500/10 hover:bg-red-500/20 border border-red-400/20 px-2 py-1 text-[11px] text-red-200"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            void deleteChartById(c.id);
+                                        }}
+                                        type="button"
+                                        title="Delete chart"
+                                    >
+                                        Delete
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </>
+
+
             ) : panelMode === "trackers" ? (
                 <>
                     <div className="text-xs text-white/60 px-2 pb-2">Tracker Controls</div>
@@ -541,25 +627,6 @@ export default function Home() {
         }
 
         // Otherwise: AI route (complex query)
-        setMandalaSearching(true);
-        try {
-            const res = await fetch("/api/mandala/query", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ q }),
-            });
-            if (!res.ok) return;
-
-            const data = await res.json();
-            if (data?.action === "highlight_gate" && typeof data?.gate === "number") {
-                setHighlightGate(data.gate);
-                setJournalDraft("");
-            }
-        } finally {
-            setMandalaSearching(false);
-        }
-
-
         setMandalaSearching(true);
         try {
             const res = await fetch("/api/mandala/query", {
@@ -1012,12 +1079,7 @@ export default function Home() {
         };
     }, []);
 
-    type ChartRow = {
-        id: string;
-        label: string | null;
-        updated_at: string | null;
-        payload: any;
-    };
+
 
     const [charts, setCharts] = useState<ChartRow[]>([]);
     const [chartsLoading, setChartsLoading] = useState(false);
@@ -1027,9 +1089,38 @@ export default function Home() {
     // Create flow
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [newChartLabel, setNewChartLabel] = useState("New Chart");
-    const [newChartJson, setNewChartJson] = useState("");
+
     const [createBusy, setCreateBusy] = useState(false);
     const [createError, setCreateError] = useState<string | null>(null);
+
+    // Birth data inputs for chart generator
+    const [birthDate, setBirthDate] = useState("");
+    const [birthTime, setBirthTime] = useState("");
+    const [birthLocation, setBirthLocation] = useState("");
+
+    // Charts entry box (like Transits composer, but for chart creation)
+    const [chartDraft, setChartDraft] = useState("");
+    const chartTaRef = useRef<HTMLTextAreaElement | null>(null);
+
+    function parseLooseBirthInput(text: string) {
+        const t = text.trim();
+
+        // basic ISO date + 24h time
+        const dateMatch = t.match(/\b(19|20)\d{2}-\d{2}-\d{2}\b/);
+        const timeMatch = t.match(/\b([01]\d|2[0-3]):([0-5]\d)\b/);
+
+        const date = dateMatch?.[0] ?? "";
+        const time = timeMatch?.[0] ?? "";
+
+        // crude location = remove date/time and compress
+        let location = t;
+        if (date) location = location.replace(date, "");
+        if (time) location = location.replace(time, "");
+        location = location.replace(/[,;|]+/g, " ").replace(/\s+/g, " ").trim();
+
+        return { date, time, location };
+    }
+
 
     async function refreshChartsList(userId: string) {
         setChartsLoading(true);
@@ -1053,69 +1144,75 @@ export default function Home() {
     }
 
     function applyChart(row: ChartRow) {
-        // Load into app memory + local cache
-        setUserChart(row.payload as UserChartPayload);
         setChartSource("cloud");
         setActiveChartId(row.id);
+
         try {
             saveUserChart(row.payload as UserChartPayload);
-        } catch { }
+            const cached = loadUserChart(); // <-- uses the saved+derived version
+            if (cached) setUserChart(cached);
+        } catch {
+            setUserChart(row.payload as UserChartPayload);
+        }
 
-        // Jump to transits so you see it immediately
         setAppPage("transits");
         setLeftPanelMode("transits");
         setSidebarExpanded(true);
     }
 
-    async function createChartFromJson() {
+
+    async function createChartFromGenerator() {
         if (!currentUser?.id) return;
 
         setCreateBusy(true);
         setCreateError(null);
 
-        let payloadObj: any;
         try {
-            payloadObj = JSON.parse(newChartJson);
-        } catch {
-            setCreateError("Invalid JSON.");
-            setCreateBusy(false);
-            return;
-        }
-
-        const supabase = supabaseBrowser();
-        const { data, error } = await supabase
-            .from("charts")
-            .insert({
-                owner_id: currentUser.id,
+            const payload = await generateChartFromInputs({
                 label: newChartLabel.trim() || "New Chart",
-                payload: payloadObj,
-            })
-            .select("id,label,updated_at,payload")
-            .single();
+                date: birthDate,
+                time: birthTime,
+                location: birthLocation,
+            });
 
-        if (error) {
-            setCreateError(error.message);
+            const supabase = supabaseBrowser();
+            const { data, error } = await supabase
+                .from("charts")
+                .insert({
+                    owner_id: currentUser.id,
+                    label: payload.label,
+                    payload,
+                })
+                .select("id,label,updated_at,payload")
+                .single();
+
+            if (error) throw new Error(error.message);
+
+            setIsCreateOpen(false);
+            setNewChartLabel("New Chart");
+
+            await refreshChartsList(currentUser.id);
+            if (data) applyChart(data as ChartRow);
+        } catch (e: any) {
+            setCreateError(e?.message ?? "Create failed.");
+        } finally {
             setCreateBusy(false);
-            return;
         }
-
-        setIsCreateOpen(false);
-        setNewChartJson("");
-        setNewChartLabel("New Chart");
-
-        // Refresh list + apply the new chart immediately
-        await refreshChartsList(currentUser.id);
-        if (data) applyChart(data as ChartRow);
-
-        setCreateBusy(false);
     }
 
+
     useEffect(() => {
-        if (appPage !== "charts") return;
         if (!currentUser?.id) return;
+
+        const wantsCharts =
+            appPage === "charts" || leftPanelMode === "charts";
+
+        if (!wantsCharts) return;
+
         void refreshChartsList(currentUser.id);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [appPage, currentUser?.id]);
+    }, [appPage, leftPanelMode, currentUser?.id]);
+
 
 
 
@@ -1169,6 +1266,36 @@ export default function Home() {
         return false;
     };
 
+    async function deleteChartById(chartId: string) {
+        if (!currentUser?.id) return;
+
+        const ok = window.confirm("Delete this chart? This cannot be undone.");
+        if (!ok) return;
+
+        const supabase = supabaseBrowser();
+
+        const { error } = await supabase
+            .from("charts")
+            .delete()
+            .eq("id", chartId)
+            .eq("owner_id", currentUser.id); // extra safety
+
+        if (error) {
+            setChartsError(error.message);
+            return;
+        }
+
+        // If you deleted the active chart, clear selection in UI
+        setChartsError(null);
+        setCharts((prev) => prev.filter((c) => c.id !== chartId));
+
+        if (activeChartId === chartId) {
+            setActiveChartId(null);
+            // optional: also clear currently-loaded chart
+            // setUserChart(null);
+            // setChartSource(null);
+        }
+    }
 
 
 
@@ -1441,6 +1568,21 @@ export default function Home() {
                             mandalaSearchOn={mandalaSearchOn}
                             setMandalaSearchOn={setMandalaSearchOn}
 
+                            charts={charts}
+                            chartsLoading={chartsLoading}
+                            chartsError={chartsError}
+                            activeChartId={activeChartId}
+                            applyChart={applyChart}
+                            deleteChartById={deleteChartById}
+                            openCreateChart={() => {
+                                setAppPage("charts");
+                                setLeftPanelMode("charts");
+                                setSidebarExpanded(true);
+                                setCreateError(null);
+                                setIsCreateOpen(true);
+                            }}
+
+
                         />
                     ) : null}
                 </div>
@@ -1613,110 +1755,130 @@ export default function Home() {
 
                     {/* Charts */}
                     {appPage === "charts" ? (
-                        <div className="p-6 max-w-3xl">
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="text-xl font-semibold">Charts</div>
-
-                                <button
-                                    className="rounded-md bg-white/10 hover:bg-white/15 border border-white/15 px-4 py-2 text-sm disabled:opacity-50"
-                                    onClick={() => {
-                                        setCreateError(null);
-                                        setIsCreateOpen((v) => !v);
-                                    }}
-                                    disabled={!currentUser}
-                                    title={!currentUser ? "Sign in to create charts" : "Create a new chart"}
-                                >
-                                    Create New
-                                </button>
+                        <div className="pt-6 pb-12 flex flex-col items-center">
+                            {/* Chart visual */}
+                            <div className="w-[860px] max-w-[calc(100vw-2rem)]">
+                                <UserChartVisual userChart={userChart} />
                             </div>
 
-                            {!currentUser ? (
-                                <div className="text-sm text-white/60">
-                                    Sign in to view and create charts.
+                            {/* Entry box (create chart) */}
+                            <div className="mt-8 w-[660px] max-w-[calc(100vw-2rem)]">
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="text-sm font-semibold text-white/90">Chart entry</div>
+
+                                    <button
+                                        className="rounded-md bg-white/10 hover:bg-white/15 border border-white/15 px-3 py-1.5 text-xs disabled:opacity-opacity-50"
+                                        onClick={() => {
+                                            setCreateError(null);
+                                            setIsCreateOpen((v) => !v);
+                                        }}
+                                        disabled={!currentUser}
+                                        title={!currentUser ? "Sign in to create charts" : "Create a new chart"}
+                                        type="button"
+                                    >
+                                        {isCreateOpen ? "Close" : "Create"}
+                                    </button>
                                 </div>
-                            ) : null}
 
-                            {isCreateOpen && currentUser ? (
-                                <div className="mb-6 rounded-xl border border-white/10 bg-white/5 p-4">
-                                    <div className="text-sm font-semibold mb-3">New chart</div>
-
-                                    <label className="block text-xs text-white/60 mb-1">Label</label>
-                                    <input
-                                        value={newChartLabel}
-                                        onChange={(e) => setNewChartLabel(e.target.value)}
-                                        className="w-full rounded-md bg-black/30 border border-white/10 px-3 py-2 text-sm text-white mb-3"
-                                    />
-
-                                    <label className="block text-xs text-white/60 mb-1">Chart JSON (payload)</label>
-                                    <textarea
-                                        value={newChartJson}
-                                        onChange={(e) => setNewChartJson(e.target.value)}
-                                        rows={8}
-                                        placeholder='Paste payload JSON here...'
-                                        className="w-full rounded-md bg-black/30 border border-white/10 px-3 py-2 text-sm text-white font-mono"
-                                    />
-
-                                    {createError ? <div className="text-sm text-red-300 mt-2">{createError}</div> : null}
-
-                                    <div className="mt-3 flex gap-2">
-                                        <button
-                                            className="rounded-md bg-white/10 hover:bg-white/15 border border-white/15 px-4 py-2 text-sm disabled:opacity-50"
-                                            onClick={createChartFromJson}
-                                            disabled={createBusy || !newChartJson.trim()}
-                                        >
-                                            {createBusy ? "Creating..." : "Create"}
-                                        </button>
-
-                                        <button
-                                            className="rounded-md bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 text-sm text-white/70"
-                                            onClick={() => setIsCreateOpen(false)}
-                                            disabled={createBusy}
-                                        >
-                                            Cancel
-                                        </button>
+                                {!currentUser ? (
+                                    <div className="text-xs text-white/60">
+                                        Sign in to create charts.
                                     </div>
+                                ) : null}
 
-                                    <div className="text-xs text-white/40 mt-2">
-                                        (We’ll move JSON paste into Settings later.)
-                                    </div>
-                                </div>
-                            ) : null}
+                                {isCreateOpen && currentUser ? (
+                                    <div className="rounded-3xl border border-white/12 bg-black/70 backdrop-blur-md shadow-lg p-4">
+                                        {/* guided inputs ABOVE textarea */}
+                                        <label className="block text-xs text-white/60 mb-1">Chart name</label>
+                                        <input
+                                            value={newChartLabel}
+                                            onChange={(e) => setNewChartLabel(e.target.value)}
+                                            className="w-full rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-sm text-white mb-3"
+                                        />
 
-                            {chartsLoading ? <div className="text-sm text-white/60">Loading…</div> : null}
-                            {chartsError ? <div className="text-sm text-red-300">{chartsError}</div> : null}
-
-                            {!chartsLoading && currentUser && charts.length === 0 ? (
-                                <div className="text-sm text-white/60">No charts yet.</div>
-                            ) : null}
-
-                            <div className="space-y-2">
-                                {charts.map((c) => {
-                                    const isActive = c.id === activeChartId;
-                                    return (
-                                        <button
-                                            key={c.id}
-                                            onClick={() => applyChart(c)}
-                                            className={[
-                                                "w-full text-left rounded-xl border px-4 py-3",
-                                                isActive ? "bg-white/10 border-white/20" : "bg-white/5 hover:bg-white/10 border-white/10",
-                                            ].join(" ")}
-                                        >
-                                            <div className="flex items-center justify-between gap-3">
-                                                <div className="min-w-0">
-                                                    <div className="text-sm font-semibold truncate">{c.label ?? "Untitled"}</div>
-                                                    <div className="text-xs text-white/50 truncate">{c.id}</div>
-                                                </div>
-
-                                                <div className="text-xs text-white/40">
-                                                    {c.updated_at ? new Date(c.updated_at).toLocaleString() : ""}
-                                                </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-xs text-white/60 mb-1">Birth date</label>
+                                                <input
+                                                    type="date"
+                                                    value={birthDate}
+                                                    onChange={(e) => setBirthDate(e.target.value)}
+                                                    className="w-full rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-sm text-white"
+                                                />
                                             </div>
-                                        </button>
-                                    );
-                                })}
+
+                                            <div>
+                                                <label className="block text-xs text-white/60 mb-1">Birth time</label>
+                                                <input
+                                                    type="time"
+                                                    value={birthTime}
+                                                    onChange={(e) => setBirthTime(e.target.value)}
+                                                    className="w-full rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-sm text-white"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-3">
+                                            <label className="block text-xs text-white/60 mb-1">Location (optional)</label>
+                                            <input
+                                                value={birthLocation}
+                                                onChange={(e) => setBirthLocation(e.target.value)}
+                                                placeholder="Boston, MA, USA"
+                                                className="w-full rounded-xl bg-black/30 border border-white/10 px-3 py-2 text-sm text-white"
+                                            />
+                                        </div>
+
+                                        <textarea
+                                            ref={chartTaRef}
+                                            value={chartDraft}
+                                            onChange={(e) => {
+                                                const v = e.target.value;
+                                                setChartDraft(v);
+
+                                                // loose parse to prefill fields when empty
+                                                const parsed = parseLooseBirthInput(v);
+                                                if (!birthDate && parsed.date) setBirthDate(parsed.date);
+                                                if (!birthTime && parsed.time) setBirthTime(parsed.time);
+                                                if (!birthLocation && parsed.location) setBirthLocation(parsed.location);
+                                            }}
+                                            placeholder='Type naturally… e.g. "1998-03-05 15:08 Boston"'
+                                            className="mt-3 w-full resize-none rounded-2xl bg-transparent px-4 py-3 text-sm text-white placeholder:text-white/35 outline-none border border-white/10"
+                                            rows={5}
+                                            onKeyDown={(e) => {
+                                                if (e.key === "Enter" && !e.shiftKey) {
+                                                    e.preventDefault();
+                                                    void createChartFromGenerator();
+                                                }
+                                            }}
+                                        />
+
+                                        {createError ? <div className="text-sm text-red-300 mt-2">{createError}</div> : null}
+
+                                        <div className="mt-3 flex gap-2">
+                                            <button
+                                                className="rounded-md bg-white/10 hover:bg-white/15 border border-white/15 px-4 py-2 text-sm disabled:opacity-50"
+                                                onClick={() => void createChartFromGenerator()}
+                                                disabled={createBusy || !birthDate || !birthTime}
+                                                type="button"
+                                            >
+                                                {createBusy ? "Creating..." : "Create chart"}
+                                            </button>
+
+                                            <button
+                                                className="rounded-md bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 text-sm text-white/70"
+                                                onClick={() => setIsCreateOpen(false)}
+                                                disabled={createBusy}
+                                                type="button"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : null}
                             </div>
                         </div>
                     ) : null}
+
 
 
                     {/* Journal */}
@@ -1819,10 +1981,14 @@ export default function Home() {
                     {isRightSidebarOpen && rightW >= RIGHT_RENDER_MIN ? (
                         <div className="h-full pl-[14px]">
                             <RightSidebar
+                                mode={appPage === "charts" ? "charts" : "transits"}
                                 hovered={hoverInfo}
                                 selected={selectedInfo}
                                 clearSelected={() => setSelectedInfo(null)}
+                                userChart={userChart}
+                                activeChartLabel={charts.find((c) => c.id === activeChartId)?.label ?? null}
                             />
+
                         </div>
                     ) : (
                         // when open but small (during drag), keep it visually stable without content reflow
