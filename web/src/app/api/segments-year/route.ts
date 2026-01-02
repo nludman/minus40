@@ -25,6 +25,10 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
 
+const MANDALA_PY_URL = process.env.MANDALA_PY_URL || "";
+const MANDALA_API_KEY = process.env.MANDALA_API_KEY || "";
+
+
 function getRepoRoot() {
   return path.resolve(process.cwd(), "..");
 }
@@ -252,42 +256,38 @@ export async function GET(req: Request) {
   }
 
   // If no cache or reset, recompute via python
+  // If no cache or reset, recompute via Cloud Run
   if (!full) {
-    const computed = await new Promise<YearPayload | null>((resolve) => {
-      execFile(
-        pythonExe,
-        [script, String(year)],
-        { maxBuffer: 50 * 1024 * 1024 },
-        (err, stdout, stderr) => {
-          if (err) {
-            console.error(stderr || err);
-            resolve(null);
-            return;
-          }
-          try {
-            resolve(safeParseJson(String(stdout)));
-          } catch (e) {
-            console.error(e);
-            resolve(null);
-          }
-        }
-      );
-    });
-
-    if (!computed) {
+    if (!MANDALA_PY_URL) {
       return NextResponse.json(
-        { error: "python_failed", details: "Failed to compute segments payload" },
+        { error: "missing_env", details: "Set MANDALA_PY_URL" },
         { status: 500 }
       );
     }
 
-    full = computed;
+    const res = await fetch(`${MANDALA_PY_URL}/segments/year?year=${year}`, {
+      headers: {
+        "x-api-key": MANDALA_API_KEY,
+      },
+      cache: "no-store",
+    });
 
-    // Write cache (best-effort)
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return NextResponse.json(
+        { error: "python_failed", details: text || `Cloud Run ${res.status}` },
+        { status: 500 }
+      );
+    }
+
+    full = (await res.json()) as YearPayload;
+
+    // keep your existing best-effort disk write (fine locally; may no-op on Vercel)
     try {
       fs.writeFileSync(cacheFile, JSON.stringify(full));
     } catch { }
   }
+
 
   // Slice to requested range
   const sliced = sliceSegmentsToRange(full, range.rangeStartMs, range.rangeEndMs);

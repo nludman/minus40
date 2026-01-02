@@ -27,42 +27,33 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const date = String(searchParams.get("date") ?? "2026-01-01");
 
-  const repoRoot = getRepoRoot();
-  const pythonExe = getPythonExe(repoRoot);
-  const script = path.join(repoRoot, "python", "transits_for_date.py");
+  const MANDALA_PY_URL = process.env.MANDALA_PY_URL || "";
+  const MANDALA_API_KEY = process.env.MANDALA_API_KEY || "";
 
-  return await new Promise<NextResponse>((resolve) => {
-    execFile(
-      pythonExe,
-      [script, date],
-      { maxBuffer: 10 * 1024 * 1024 },
-      (err, stdout, stderr) => {
-        if (err) {
-          resolve(
-            NextResponse.json(
-              { error: "python_failed", details: String(stderr || err) },
-              { status: 500 }
-            )
-          );
-          return;
-        }
-
-        try {
-          resolve(NextResponse.json(safeParseJson(String(stdout))));
-        } catch (e) {
-          resolve(
-            NextResponse.json(
-              {
-                error: "bad_json",
-                details: String(e),
-                raw: String(stdout),
-                stderr: String(stderr),
-              },
-              { status: 500 }
-            )
-          );
-        }
-      }
+  if (!MANDALA_PY_URL) {
+    return NextResponse.json(
+      { error: "missing_env", details: "Set MANDALA_PY_URL" },
+      { status: 500 }
     );
-  });
+  }
+
+  const res = await fetch(
+    `${MANDALA_PY_URL}/transits/date?date=${encodeURIComponent(date)}`,
+    {
+      headers: { "x-api-key": MANDALA_API_KEY },
+      cache: "no-store",
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    return NextResponse.json(
+      { error: "python_failed", details: text || `Cloud Run ${res.status}` },
+      { status: 500 }
+    );
+  }
+
+  const payload = await res.json();
+  return NextResponse.json(payload);
 }
+
