@@ -6,8 +6,7 @@
 
 "use client";
 
-type AppPage = "transits" | "charts" | "journal" | "trackers" | "settings" | "account";
-type LeftPanelMode = AppPage | "settings";
+import type { AppPage, LeftPanelMode } from "@/components/shell/types";
 
 
 function Icon({ label }: { label: string }) {

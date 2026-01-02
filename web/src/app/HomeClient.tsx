@@ -14,6 +14,8 @@ import { clearUserChart, loadUserChart, saveUserChart, type UserChartPayload } f
 import type { HoverInfo } from "@/lib/mandala/constants";
 import TransitJournalViews from "@/components/mandala/TransitJournalViews";
 import AppSidebar from "@/components/shell/AppSidebar";
+import LeftExpandedPanel from "@/components/shell/LeftExpandedPanel";
+
 import BodygraphSvg from "@/components/bodygraph/BodygraphSvg";
 
 import { ringPalette, ringRegistry } from "@/lib/mandala/rings/registry";
@@ -26,408 +28,10 @@ import { getRingModule } from "@/lib/mandala/rings/registry";
 
 import { supabaseBrowser } from "@/lib/supabase/browser";
 
+import type { AppPage, LeftPanelMode, ChartRow } from "@/components/shell/types";
 
+import { isDevToolsEnabled, makeResetYearCache, makeResetUserCache } from "@/components/shell/devTools";
 
-
-type AppPage = "transits" | "charts" | "trackers" | "journal" | "account";
-type LeftPanelMode = AppPage | "settings";
-
-type ChartRow = {
-    id: string;
-    label: string | null;
-    updated_at: string | null;
-    payload: any;
-};
-
-type LeftExpandedPanelProps = {
-    panelMode: LeftPanelMode;
-
-
-    // transits props
-    year: number;
-    setYear: (y: number) => void;
-    nav: { view: "calendar" | "tracker"; span: "year" | "quarter" | "month" | "week"; m?: number };
-    pushNav: (nextYear: number, nextNav: any) => void;
-
-    visiblePlanets: Record<string, boolean>;
-    togglePlanet: (planet: string) => void;
-    toggleGroup: (group: "Inner" | "Outer") => void;
-
-    arcCap: "round" | "butt";
-    setArcCap: (v: "round" | "butt") => void;
-
-    ringLayout: import("@/lib/mandala/ringLayout").RingLayoutKnobs;
-    setRingLayout: (v: import("@/lib/mandala/ringLayout").RingLayoutKnobs) => void;
-
-    showCalendar: boolean;
-    setShowCalendar: (v: boolean) => void;
-
-    resetYearCache: () => void;
-    resetUserCache: () => void;
-
-    gapPxRound: number;
-    setGapPxRound: (v: number) => void;
-    gapPxButt: number;
-    setGapPxButt: (v: number) => void;
-
-    // trackers props
-    trackerRings: RingInstance[];
-    addTrackerRing: (moduleId: string) => void;
-    removeTrackerRing: (instanceId: string) => void;
-
-    // settings props
-    userChart: UserChartPayload | null;
-    selectedInfo: HoverInfo;
-    onUserChartUploaded: (payload: UserChartPayload) => void;
-    onJournalSaved: () => void;
-
-    mandalaAiOn: boolean;
-    setMandalaAiOn: (v: boolean) => void;
-
-    mandalaQuery: string;
-    setMandalaQuery: (v: string) => void;
-
-    mandalaSearching: boolean;
-    setMandalaSearching: (v: boolean) => void;
-
-    highlightGate: number | null;
-    setHighlightGate: (v: number | null) => void;
-
-    mandalaSearchOn: boolean;
-    setMandalaSearchOn: (v: boolean) => void;
-
-    // charts props
-    charts: ChartRow[];
-    chartsLoading: boolean;
-    chartsError: string | null;
-    activeChartId: string | null;
-    applyChart: (row: ChartRow) => void;
-    deleteChartById: (chartId: string) => void;
-    openCreateChart: () => void;
-
-
-};
-
-function LeftExpandedPanel(props: LeftExpandedPanelProps) {
-    const {
-        panelMode,
-
-        year,
-        setYear,
-        nav,
-        pushNav,
-
-        visiblePlanets,
-        togglePlanet,
-        toggleGroup,
-
-        arcCap,
-        setArcCap,
-
-        ringLayout,
-        setRingLayout,
-
-        showCalendar,
-        setShowCalendar,
-
-        resetYearCache,
-        resetUserCache,
-
-        gapPxRound,
-        setGapPxRound,
-        gapPxButt,
-        setGapPxButt,
-
-        trackerRings,
-        addTrackerRing,
-        removeTrackerRing,
-
-        mandalaAiOn,
-        setMandalaAiOn,
-
-        mandalaQuery,
-        setMandalaQuery,
-
-        mandalaSearching,
-        setMandalaSearching,
-
-        highlightGate,
-        setHighlightGate,
-
-        mandalaSearchOn,
-        setMandalaSearchOn,
-
-        charts,
-        chartsLoading,
-        chartsError,
-        activeChartId,
-        applyChart,
-        deleteChartById,
-        openCreateChart,
-
-
-    } = props;
-
-    const onMandalaSearch = async () => {
-        const q = mandalaQuery.trim();
-        if (!q) return;
-
-        // AI off = cheap parse
-        if (!mandalaAiOn) {
-            const m =
-                q.match(/gate\s*#?\s*(\d{1,2})/i) ||
-                q.match(/\b(\d{1,2})\b/);
-            const gate = m ? Number(m[1]) : null;
-            setHighlightGate(gate && gate >= 1 && gate <= 64 ? gate : null);
-            return;
-        }
-
-        // ✅ AI is ON, but if query is simple, still do offline parse (save tokens)
-        const simple =
-            /^\s*gate\s*#?\s*\d{1,2}\s*$/i.test(q) ||
-            /^\s*\d{1,2}\s*$/.test(q) ||
-            /^\s*gate#?\d{1,2}\s*$/i.test(q);
-
-        if (simple) {
-            const m =
-                q.match(/gate\s*#?\s*(\d{1,2})/i) ||
-                q.match(/\b(\d{1,2})\b/);
-            const gate = m ? Number(m[1]) : null;
-            setHighlightGate(gate && gate >= 1 && gate <= 64 ? gate : null);
-            return;
-        }
-
-        setMandalaSearching(true);
-        try {
-            const res = await fetch("/api/mandala/query", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ q }),
-            });
-            if (!res.ok) return;
-
-            const data = await res.json();
-            if (data?.action === "highlight_gate" && typeof data?.gate === "number") {
-                setHighlightGate(data.gate);
-            }
-        } finally {
-            setMandalaSearching(false);
-        }
-    };
-
-
-
-    return (
-        <div className="fixed left-[56px] top-0 h-screen w-[340px] bg-black/30 border-r border-white/10 p-3 overflow-auto z-40">
-            {panelMode === "transits" ? (
-                <>
-                    <div className="text-xs text-white/60 px-2 pb-2">Mandala Controls</div>
-
-                    <ControlPanel
-                        variant="embedded"
-                        year={year}
-                        setYear={(y) => {
-                            setYear(y);
-                            pushNav(y, nav);
-                        }}
-                        visiblePlanets={visiblePlanets}
-                        togglePlanet={togglePlanet}
-                        toggleGroup={toggleGroup}
-                        arcCap={arcCap}
-                        setArcCap={setArcCap}
-                        ringLayout={ringLayout}
-                        setRingLayout={setRingLayout}
-                        showCalendar={showCalendar}
-                        setShowCalendar={setShowCalendar}
-                        resetYearCache={resetYearCache}
-                        resetUserCache={resetUserCache}
-                        gapPxRound={gapPxRound}
-                        setGapPxRound={setGapPxRound}
-                        gapPxButt={gapPxButt}
-                        setGapPxButt={setGapPxButt}
-                        mandalaAiOn={mandalaAiOn}
-                        setMandalaAiOn={setMandalaAiOn}
-                        mandalaQuery={mandalaQuery}
-                        setMandalaQuery={setMandalaQuery}
-                        mandalaSearching={mandalaSearching}
-                        onMandalaSearch={onMandalaSearch}
-                        highlightGate={highlightGate}
-                        clearHighlightGate={() => setHighlightGate(null)}
-                        mandalaSearchOn={mandalaSearchOn}
-                        setMandalaSearchOn={setMandalaSearchOn}
-
-
-                    />
-
-
-
-                </>
-
-            ) : panelMode === "charts" ? (
-                <>
-                    <div className="flex items-center justify-between px-2 pb-2">
-                        <div className="text-xs text-white/60">Charts</div>
-
-                        <button
-                            className="rounded-md bg-white/10 hover:bg-white/15 border border-white/15 px-3 py-1.5 text-xs disabled:opacity-50"
-                            onClick={openCreateChart}
-                            type="button"
-                        >
-                            New
-                        </button>
-                    </div>
-
-                    {chartsLoading ? <div className="px-2 text-xs text-white/60">Loading…</div> : null}
-                    {chartsError ? <div className="px-2 text-xs text-red-300">{chartsError}</div> : null}
-
-                    <div className="mt-2 space-y-2">
-                        {charts.map((c) => {
-                            const isActive = c.id === activeChartId;
-
-                            return (
-                                <div
-                                    key={c.id}
-                                    className={[
-                                        "w-full rounded-xl border px-3 py-2 flex items-center justify-between gap-2",
-                                        isActive ? "bg-white/10 border-white/20" : "bg-white/5 hover:bg-white/10 border-white/10",
-                                    ].join(" ")}
-                                >
-                                    <button
-                                        onClick={() => applyChart(c)}
-                                        className="min-w-0 flex-1 text-left"
-                                        type="button"
-                                    >
-                                        <div className="text-sm font-semibold truncate">{c.label ?? "Untitled"}</div>
-                                        <div className="text-[11px] text-white/40 truncate">
-                                            {c.updated_at ? new Date(c.updated_at).toLocaleString() : ""}
-                                        </div>
-                                    </button>
-
-                                    <button
-                                        className="shrink-0 rounded-md bg-red-500/10 hover:bg-red-500/20 border border-red-400/20 px-2 py-1 text-[11px] text-red-200"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            void deleteChartById(c.id);
-                                        }}
-                                        type="button"
-                                        title="Delete chart"
-                                    >
-                                        Delete
-                                    </button>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </>
-
-
-            ) : panelMode === "trackers" ? (
-                <>
-                    <div className="text-xs text-white/60 px-2 pb-2">Tracker Controls</div>
-
-                    {/* Ring selection UI */}
-                    <div className="mt-4 border-t border-white/10 pt-4">
-                        <div className="text-xs text-white/60 px-2 pb-2">Tracker Rings</div>
-
-                        <div className="px-2 py-2">
-                            <div className="text-sm font-semibold mb-2">Add rings</div>
-                            <div className="space-y-2">
-                                {ringPalette.map((r) => (
-                                    <button
-                                        key={r.id}
-                                        className="w-full text-left rounded-md bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-2"
-                                        onClick={() => addTrackerRing(r.id)}
-                                    >
-                                        <div className="text-sm">{r.label}</div>
-                                        <div className="text-xs text-white/50">{r.kind}</div>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="mt-4 px-2 py-2 border-t border-white/10">
-                            <div className="text-sm font-semibold mb-2">Current rings</div>
-
-                            {trackerRings.length === 0 ? (
-                                <div className="text-xs text-white/60">No rings yet. Add one from above.</div>
-                            ) : (
-                                <div className="space-y-2">
-                                    {trackerRings.map((inst) => (
-                                        <div
-                                            key={inst.instanceId}
-                                            className="rounded-md bg-white/5 border border-white/10 px-3 py-2 flex items-center justify-between gap-2"
-                                        >
-                                            <div className="min-w-0">
-                                                <div className="text-sm truncate">{inst.label ?? inst.moduleId}</div>
-                                                <div className="text-xs text-white/50 truncate">{inst.moduleId}</div>
-                                            </div>
-                                            <button
-                                                className="text-xs text-white/60 hover:text-white"
-                                                onClick={() => removeTrackerRing(inst.instanceId)}
-                                            >
-                                                Remove
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-
-                    {/* Mandala layout controls (same knobs that affect tracker mandala) */}
-                    <ControlPanel
-                        variant="embedded"
-                        year={year}
-                        setYear={(y) => {
-                            setYear(y);
-                            pushNav(y, nav);
-                        }}
-                        visiblePlanets={visiblePlanets}
-                        togglePlanet={togglePlanet}
-                        toggleGroup={toggleGroup}
-                        arcCap={arcCap}
-                        setArcCap={setArcCap}
-                        ringLayout={ringLayout}
-                        setRingLayout={setRingLayout}
-                        showCalendar={showCalendar}
-                        setShowCalendar={setShowCalendar}
-                        resetYearCache={resetYearCache}
-                        resetUserCache={resetUserCache}
-                        gapPxRound={gapPxRound}
-                        setGapPxRound={setGapPxRound}
-                        gapPxButt={gapPxButt}
-                        setGapPxButt={setGapPxButt}
-                    />
-
-
-                </>
-            ) : panelMode === "settings" ? (
-                <>
-                    <div className="text-xs text-white/60 px-2 pb-2">Settings</div>
-                    <UserChartPanel
-                        userChart={props.userChart}
-                        onUserChartUploaded={props.onUserChartUploaded}
-                        onResetUserCache={props.resetUserCache}
-                        isOpen={true}
-                        onToggleOpen={() => { }}
-                        year={props.year}
-                        selected={props.selectedInfo}
-                        onJournalSaved={props.onJournalSaved}
-                    />
-                </>
-            ) : (
-
-                <>
-                    <div className="text-xs text-white/60 px-2 pb-2">Panel</div>
-                    <div className="text-white/60 text-sm px-2">
-                        No controls for this page yet.
-                    </div>
-                </>
-            )}
-        </div>
-    );
-}
 
 
 export default function Home() {
@@ -874,6 +478,9 @@ export default function Home() {
     const router = useRouter();
     const searchParams = useSearchParams();
 
+
+
+
     const navFromUrl = useMemo<NavState>(() => {
         const viewRaw = searchParams.get("view");
         const spanRaw = searchParams.get("span");
@@ -908,18 +515,25 @@ export default function Home() {
     useEffect(() => setNav(navFromUrl), [navFromUrl]);
 
 
+    // PATH: src/app/HomeClient.tsx
     function pushNav(nextYear: number, nextNav: NavState) {
-        const p = new URLSearchParams();
+        // ✅ preserve existing params like ?dev=1
+        const p = new URLSearchParams(searchParams.toString());
+
         p.set("y", String(nextYear));
         p.set("view", nextNav.view);
         p.set("span", nextNav.span);
 
         if (nextNav.span === "month" && typeof nextNav.m === "number") {
             p.set("m", String(nextNav.m));
+        } else {
+            // ✅ ensure we don't keep stale month param
+            p.delete("m");
         }
 
         router.push(`/?${p.toString()}`);
     }
+
 
 
     // Mandala Search (AI action lane)
@@ -929,6 +543,11 @@ export default function Home() {
     const [highlightGate, setHighlightGate] = useState<number | null>(null);
     // Mandala search mode (journal box doubles as query input)
     const [mandalaSearchOn, setMandalaSearchOn] = useState(false);
+
+
+    const [chartJsonPasteOpen, setChartJsonPasteOpen] = useState(false);
+    const [chartJsonDraft, setChartJsonDraft] = useState("");
+    const [chartJsonError, setChartJsonError] = useState<string | null>(null);
 
 
     // =========================
@@ -971,6 +590,24 @@ export default function Home() {
 
     const [userReloadKey, setUserReloadKey] = useState(0);
     const [userChart, setUserChart] = useState<UserChartPayload | null>(null);
+
+    // ===== Dev tools (hidden unless ?dev=1 or non-production) =====
+    const devToolsOn = isDevToolsEnabled(searchParams);
+
+    const resetYearCacheDev = useCallback(() => {
+        setYearReloadMode("reset");
+        setYearReloadKey((k) => k + 1);
+    }, []);
+
+    const resetUserCacheDev = useCallback(() => {
+        try {
+            clearUserChart();
+        } catch { }
+        setUserChart(null);
+        setUserReloadKey((k) => k + 1);
+    }, []);
+
+
     const [chartSource, setChartSource] = useState<"cloud" | "local" | null>(null);
 
     // =========================
@@ -1197,6 +834,26 @@ export default function Home() {
             setCreateError(e?.message ?? "Create failed.");
         } finally {
             setCreateBusy(false);
+        }
+    }
+
+    function importChartFromJsonPaste() {
+        setChartJsonError(null);
+
+        const raw = chartJsonDraft.trim();
+        if (!raw) return;
+
+        try {
+            const parsed = JSON.parse(raw);
+
+            // Expect our payload shape (UserChartPayload).
+            // We’ll keep this strict for now; adapters come later.
+            onUserChartUploaded(parsed);
+
+            setChartJsonPasteOpen(false);
+            setChartJsonDraft("");
+        } catch (e: any) {
+            setChartJsonError(e?.message ?? "Invalid JSON.");
         }
     }
 
@@ -1482,6 +1139,58 @@ export default function Home() {
 
     return (
         <div className="h-screen w-full overflow-hidden">
+
+            {chartJsonPasteOpen ? (
+                <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="w-[720px] max-w-full rounded-2xl border border-white/10 bg-black/80 p-4">
+                        <div className="flex items-center justify-between">
+                            <div className="text-sm font-semibold text-white">Paste Chart JSON</div>
+                            <button
+                                type="button"
+                                onClick={() => setChartJsonPasteOpen(false)}
+                                className="text-xs opacity-80 hover:opacity-100 rounded-lg bg-white/10 px-2 py-1"
+                            >
+                                Close
+                            </button>
+                        </div>
+
+                        <div className="mt-3 text-xs text-white/60">
+                            Paste a chart payload. (For now this expects Mandala’s `UserChartPayload` format.)
+                        </div>
+
+                        <textarea
+                            value={chartJsonDraft}
+                            onChange={(e) => setChartJsonDraft(e.target.value)}
+                            className="mt-3 w-full h-[260px] rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-xs text-white outline-none"
+                            placeholder='{"label":"...", "birth_utc":"...", ...}'
+                        />
+
+                        {chartJsonError ? (
+                            <div className="mt-2 text-sm text-red-300">{chartJsonError}</div>
+                        ) : null}
+
+                        <div className="mt-3 flex gap-2 justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setChartJsonPasteOpen(false)}
+                                className="rounded-md bg-white/5 hover:bg-white/10 border border-white/10 px-4 py-2 text-sm text-white/70"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={importChartFromJsonPaste}
+                                className="rounded-md bg-white/10 hover:bg-white/15 border border-white/15 px-4 py-2 text-sm disabled:opacity-50"
+                                disabled={!chartJsonDraft.trim()}
+                            >
+                                Import
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
+
             <div
                 className={[
                     "h-full grid",
@@ -1537,14 +1246,7 @@ export default function Home() {
                             setRingLayout={setRingLayout}
                             showCalendar={showCalendar}
                             setShowCalendar={setShowCalendar}
-                            resetYearCache={() => {
-                                setYearReloadMode("reset");
-                                setYearReloadKey((k) => k + 1);
-                            }}
-                            resetUserCache={() => {
-                                clearUserChart();
-                                setUserChart(null);
-                            }}
+
                             gapPxRound={gapPxRound}
                             setGapPxRound={setGapPxRound}
                             gapPxButt={gapPxButt}
@@ -1580,6 +1282,15 @@ export default function Home() {
                                 setSidebarExpanded(true);
                                 setCreateError(null);
                                 setIsCreateOpen(true);
+                            }}
+
+                            resetYearCache={devToolsOn ? resetYearCacheDev : undefined}
+                            resetUserCache={devToolsOn ? resetUserCacheDev : undefined}
+                            devToolsOn={devToolsOn}
+
+                            onOpenChartJsonPaste={() => {
+                                setChartJsonPasteOpen(true);
+                                setChartJsonError(null);
                             }}
 
 

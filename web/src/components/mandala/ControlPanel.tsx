@@ -45,6 +45,9 @@ type Props = {
   mandalaSearchOn?: boolean;
   setMandalaSearchOn?: (v: boolean) => void;
 
+  devToolsOn?: boolean;
+
+
 };
 
 export default function ControlPanel({
@@ -79,6 +82,9 @@ export default function ControlPanel({
 
   mandalaSearchOn,
   setMandalaSearchOn,
+
+  devToolsOn = false,
+
 }: Props) {
   const [panelOpen, setPanelOpen] = useState(true);
   const [openPlanets, setOpenPlanets] = useState(true);
@@ -198,27 +204,30 @@ export default function ControlPanel({
           </button>
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-2">
-          <button
-            onClick={() => resetYearCache?.()}
-            className="h-9 w-full rounded-xl text-sm bg-white/10 text-white hover:bg-white/20"
-            title="Forces the server to recompute the year segments and overwrite disk cache"
-            type="button"
-          >
-            Reset year cache
-          </button>
-
-          {resetUserCache ? (
+        {devToolsOn ? (
+          <div className="mt-3 grid grid-cols-1 gap-2">
             <button
-              onClick={() => resetUserCache?.()}
+              onClick={() => resetYearCache?.()}
               className="h-9 w-full rounded-xl text-sm bg-white/10 text-white hover:bg-white/20"
-              title="Clears local user chart cache"
+              title="Forces the server to recompute the year segments and overwrite disk cache"
               type="button"
             >
-              Reset user cache
+              Reset year cache
             </button>
-          ) : null}
-        </div>
+
+            {resetUserCache ? (
+              <button
+                onClick={() => resetUserCache?.()}
+                className="h-9 w-full rounded-xl text-sm bg-white/10 text-white hover:bg-white/20"
+                title="Clears local user chart cache"
+                type="button"
+              >
+                Reset user cache
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
       </div>
 
       {/* Planets */}
