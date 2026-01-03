@@ -50,7 +50,6 @@ export default function UserChartPanel({
     const [journalMsg, setJournalMsg] = useState<string | null>(null);
 
 
-
     const handleChartText = (label: string, text: string, source: "upload" | "paste") => {
         setChartJsonText(text);
         setError(null);
