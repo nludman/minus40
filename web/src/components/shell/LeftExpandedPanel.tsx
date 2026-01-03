@@ -1,7 +1,6 @@
 "use client";
 
 import ControlPanel from "@/components/mandala/ControlPanel";
-import UserChartPanel from "@/components/mandala/UserChartPanel";
 
 import type { HoverInfo } from "@/lib/mandala/constants";
 import type { UserChartPayload } from "@/lib/userChartCache";
